@@ -2,7 +2,7 @@
 # clean build → secret-scan → SBOM → smoke → (Windows smoke) → publish-gate.
 # 베이스는 windows/golden/base-image.txt 의 digest 핀(재현성). SOURCE_DATE_EPOCH=커밋 시각.
 #
-# 트리거: 수동(workflow_dispatch) + 태그 push(v*). publish=true 면 발행 게이트를 차단 모드로.
+# 트리거: 수동(workflow_dispatch) 전용. publish=true 면 발행 게이트를 차단 모드로.
 name: golden-build
 
 on:
@@ -34,8 +34,8 @@ on:
         type: boolean
         required: false
         default: false
-  push:
-    tags: [ 'v*' ]
+  # 태그 push 트리거 없음: 골든 빌드는 입력(claude_code_version·marketplace_url 등)이 필요한
+  # 의도적 수동 작업이다. 태그 자동발화는 빈 입력·재빌드 핀불일치를 유발하므로 workflow_dispatch 전용.
 
 permissions:
   contents: read
