@@ -1,0 +1,38 @@
+{
+  "_comment": "릴리스 매니페스트(생성본). golden-build 산출에서 채움. 런타임 신뢰는 '부트스트랩에 박힌 이미지 핀'이고 이 파일은 게시·감사용 단일 출처. 이 빌드는 미서명(체크섬 대조).",
+  "schema": "cc-companion/win-release/1",
+  "version": "0.1.0",
+  "distro_name": "cc-cockpit",
+  "artifacts": {
+    "image": {
+      "file": "cockpit-wsl.tar.gz",
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.0/cockpit-wsl.tar.gz",
+      "sha256": "948c1da970e0b67715baa1068492bf4f548782588dd29212c6d98b4514d3b127",
+      "format": "tar.gz",
+      "size_bytes": 416249200
+    },
+    "bootstrap": {
+      "file": "Install-Cockpit.ps1",
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.0/Install-Cockpit.ps1",
+      "sha256": "f741b72734e2f1723fcb10191e8c75537a45311219ffb84d6a4043d93329221a",
+      "authenticode": {
+        "signed": false,
+        "unsigned_acknowledged": true,
+        "publisher_thumbprint": "",
+        "_note": "미서명+체크섬 발행(코드서명 인증서 미보유). 무결성은 image.sha256·bootstrap sha256 체크섬 대조로만 보장(서명층 없음). web/README 에 명시 고지."
+      }
+    },
+    "staged_bootstrap": {
+      "file": "Install-Cockpit-Staged.ps1",
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.0/Install-Cockpit-Staged.ps1",
+      "sha256": "f40560ca3c3a80a3083666429e465a665fdadfdd7cfc8c7ebe7b2b7bb56560a7"
+    }
+  },
+  "provenance": {
+    "base_image": "ubuntu:24.04@sha256:786a8b558f7be160c6c8c4a54f9a57274f3b4fb1491cf65146521ae77ff1dc54",
+    "plugin_commit": "ed85e04",
+    "claude_code_pin": "2.1.186",
+    "sbom": "cockpit-wsl.sbom.spdx.json",
+    "_note": "provenance.json·SBOM(SPDX)는 릴리스에 첨부. apt/npm floating으로 완전 bit-for-bit 아님(provenance versions로 실제 설치본 추적)."
+  }
+}

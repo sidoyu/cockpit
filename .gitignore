@@ -1,0 +1,32 @@
+# 시크릿·환경 — 절대 커밋 금지
+.env
+.env.*
+*.key
+*.pem
+*credentials*
+*secret*
+*.sqlite
+# 예외: 발행 전 시크릿 스캐너 자신은 추적한다(시크릿 '패턴'만 포함·실값 없음).
+# '*secret*' 가 이 도구를 오탐 무시해 빌드#1~4 내내 미커밋이었음 → CI·클론에서 누락되던 결함 수정.
+!scripts/secret-scan.sh
+
+# 사용자 런타임 데이터(메모리·로그)는 패키지에 포함하지 않는다
+# (메모리 '템플릿'만 plugin/memory-template/ 에 둔다)
+**/cwp_state/
+**/pending/*.md
+**/codex_calls/
+*.log
+
+# 파이썬
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+
+# 백업 부산물
+*.bak
+*.bak-*
+
+# 빌드 산출물(골든 이미지·SBOM·provenance) — 릴리스 자산이라 repo 미커밋
+dist/

@@ -1,0 +1,10 @@
+# 골든 이미지의 베이스 컨테이너 이미지 — 단일 출처.
+# build-rootfs.sh(BASE_IMAGE 미지정 시), golden-build 워크플로, publish-gate 가 모두 이 값을 읽는다.
+#
+# 재현성 규칙: 발행 빌드는 반드시 digest 로 핀 고정한다(태그만 쓰면 출처가 흔들림).
+#   형식: ubuntu:24.04@sha256:<64-hex-digest>
+#   digest 얻기: docker pull ubuntu:24.04 && docker inspect --format '{{index .RepoDigests 0}}' ubuntu:24.04
+#
+# 아래는 개발 빌드용 floating 태그(편의). publish-gate 는 @sha256: 핀이 아니면 발행을 차단한다
+# ($PinnedSha256 핀과 동일 철학 — 날조 금지, 배포자가 실제 digest 로 교체).
+ubuntu:24.04@sha256:786a8b558f7be160c6c8c4a54f9a57274f3b4fb1491cf65146521ae77ff1dc54

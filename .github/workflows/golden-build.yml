@@ -1,0 +1,141 @@
+# golden-build — CI 골든 파이프라인(단계5).
+# clean build → secret-scan → SBOM → smoke → (Windows smoke) → publish-gate.
+# 베이스는 windows/golden/base-image.txt 의 digest 핀(재현성). SOURCE_DATE_EPOCH=커밋 시각.
+#
+# 트리거: 수동(workflow_dispatch) + 태그 push(v*). publish=true 면 발행 게이트를 차단 모드로.
+name: golden-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_image:
+        description: '베이스 이미지 override(미입력 시 base-image.txt). 발행은 @sha256: 핀 필요.'
+        required: false
+        default: ''
+      marketplace_url:
+        description: '마켓플레이스 소스 URL(발행 시 필수 — 미입력 시 example.invalid 라 publish smoke 차단).'
+        required: false
+        default: ''
+      claude_code_version:
+        description: 'claude-code npm 핀 버전(발행 필수 — 미입력 시 latest=floating 이라 publish-gate 차단). 예: 1.2.3'
+        required: false
+        default: ''
+      syft_version:
+        description: 'syft SBOM 도구 핀 버전(선택, best-effort). 예: v1.18.1. 미입력 시 installer 기본.'
+        required: false
+        default: ''
+      signed_release:
+        description: 'Authenticode 서명 발행(true)이면 Windows smoke 가 서명 존재를 강제. 미서명+체크섬 발행(기본 false)은 서명층 없음 — 무결성=SHA-256 핀 대조.'
+        type: boolean
+        required: false
+        default: false
+      publish:
+        description: '발행 모드(게이트·서명·마켓플레이스 placeholder 를 차단 조건으로)'
+        type: boolean
+        required: false
+        default: false
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: 골든 이미지 빌드 + SBOM + 스모크
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 0 }   # plugin_commit·SOURCE_DATE_EPOCH 산출용 전체 이력
+
+      - name: 빌드 파라미터(SOURCE_DATE_EPOCH=커밋 시각)
+        id: params
+        env:
+          IN_BASE_IMAGE: ${{ inputs.base_image }}
+          IN_MARKETPLACE: ${{ inputs.marketplace_url }}
+          IN_CC_VERSION: ${{ inputs.claude_code_version }}
+          IN_SYFT_VERSION: ${{ inputs.syft_version }}
+        run: |
+          # 입력은 env 로 받아 셸 인라인 보간 회피(Actions injection 완화).
+          echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+          [ -n "$IN_BASE_IMAGE" ] && echo "BASE_IMAGE=$IN_BASE_IMAGE" >> "$GITHUB_ENV" || true
+          [ -n "$IN_MARKETPLACE" ] && echo "COCKPIT_MARKETPLACE=$IN_MARKETPLACE" >> "$GITHUB_ENV" || true
+          [ -n "$IN_CC_VERSION" ] && echo "CLAUDE_CODE_VERSION=$IN_CC_VERSION" >> "$GITHUB_ENV" || true
+          [ -n "$IN_SYFT_VERSION" ] && echo "SYFT_VERSION=$IN_SYFT_VERSION" >> "$GITHUB_ENV" || true
+
+      - name: 발행 트리 secret-scan(PUBLISH·차단)
+        run: PUBLISH=1 bash scripts/secret-scan.sh
+
+      - name: 골든 이미지 빌드(build-rootfs.sh)
+        run: bash windows/golden/build-rootfs.sh "$PWD/dist/windows"
+
+      - name: syft 설치(SBOM용, best-effort)
+        continue-on-error: true
+        run: |
+          # 표준 SPDX 용 syft(best-effort 개발도구 — 이미지에 베이크되지 않음. 실패해도 gen-sbom 이
+          # dpkg 폴백 SBOM 생성). SYFT_VERSION 설정 시 그 릴리스로 핀(installer 가 체크섬 검증).
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b "$RUNNER_TEMP/bin" ${SYFT_VERSION:+-v "$SYFT_VERSION"} || true
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: SBOM 생성(gen-sbom.sh)
+        run: bash scripts/gen-sbom.sh dist/windows/cockpit-wsl.tar.gz
+
+      - name: 이미지 스모크(smoke-image.sh)
+        env:
+          IS_PUBLISH: ${{ inputs.publish == true || startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          if [ "$IS_PUBLISH" = "true" ]; then PUBLISH=1 bash scripts/smoke-image.sh dist/windows/cockpit-wsl.tar.gz
+          else bash scripts/smoke-image.sh dist/windows/cockpit-wsl.tar.gz; fi
+
+      - name: 산출물 업로드
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cockpit-golden-image
+          path: |
+            dist/windows/cockpit-wsl.tar.gz
+            dist/windows/cockpit-wsl.tar.gz.sha256
+            dist/windows/provenance.json
+            dist/windows/cockpit-wsl.sbom*.json
+          if-no-files-found: error
+
+  windows-smoke:
+    name: Windows 스모크(PS5.1 게이트 발화 + 서명)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: PSScriptAnalyzer 설치
+        shell: pwsh
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+      - name: PS 정적분석(5.1)
+        shell: powershell
+        run: .\scripts\ps-analyze.ps1
+      - name: 안전 게이트 발화 스모크(5.1)
+        shell: powershell
+        env:
+          IS_PUBLISH: ${{ inputs.publish == true || startsWith(github.ref, 'refs/tags/') }}
+          SIGNED_RELEASE: ${{ inputs.signed_release == true }}
+        run: |
+          # 서명 발행(signed_release=true)에서만 서명 존재를 강제한다. 미서명+체크섬 발행(기본)은
+          # 서명층이 없으므로 -RequireSignature 를 끈다(무결성=SHA-256 핀 대조, publish-gate 가 manifest 로 확인).
+          if ($env:IS_PUBLISH -eq 'true' -and $env:SIGNED_RELEASE -eq 'true') { .\scripts\ps-gate-smoke.ps1 -RequireSignature }
+          else { .\scripts\ps-gate-smoke.ps1 }
+
+  publish-gate:
+    name: 발행 게이트
+    runs-on: ubuntu-latest
+    needs: [ build, windows-smoke ]
+    # 발행(publish=true 또는 태그 push)에서만 차단. 개발 dispatch 는 비차단(미리보기).
+    continue-on-error: ${{ !(inputs.publish == true || startsWith(github.ref, 'refs/tags/')) }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 0 }
+      - name: 빌드 산출물 내려받기(핀-해시 교차검증용)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: cockpit-golden-image
+          path: dist/windows
+      - name: publish-gate.sh
+        run: bash scripts/publish-gate.sh

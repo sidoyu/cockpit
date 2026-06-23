@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-marketplace-v1.schema.json",
+  "name": "cc-companion",
+  "description": "단일 사령탑 Claude Code 운영 환경 패키지 (행동 규율·메모리 시스템·보조 검토·안전망).",
+  "version": "0.1.0",
+  "owner": {
+    "name": "sidoyu"
+  },
+  "plugins": [
+    {
+      "name": "cockpit",
+      "source": "./plugin",
+      "description": "비개발자도 '마법사가 시키는 대로'면 일관된 Claude Code 운영 환경이 깔린다: 작업 규율(자율 진행·자기점검), 파일 기반 메모리 시스템, 안전망(금지목록·긴급정지·감사로그), 첫 실행 설정 마법사.",
+      "category": "productivity",
+      "keywords": ["memory", "workflow", "governance", "setup", "safety"]
+    }
+  ]
+}

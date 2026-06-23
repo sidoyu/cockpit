@@ -1,0 +1,43 @@
+# cockpit deny-list — 파괴/비가역 셸 패턴(정규식, 한 줄당 하나). '#' 주석.
+# bypass 환경의 backstop. 1차 방어는 AI 판단 + CLAUDE.md '멈춰 질문' 규율(GOVERNANCE.md 5장).
+# 사용자 추가 패턴은 이 파일을 고치지 말고  <CC_STATE_DIR>/deny-list.local.txt 에 둔다(업데이트에도 보존).
+# Python re 문법. 대소문자 무시. 매칭되면 그 Bash 명령은 차단된다.
+#
+# ── 광범위/위험 삭제(루트·홈·시스템·홈변수·glob) — 일반 하위경로 삭제는 허용 ──
+\bsudo\s+(-\S+\s+)*rm\b
+\brm\s+(?:-\S+\s+)*-\S*[rf]\S*\s+(?:-\S+\s+)*["']?(?:/|~|\*|\$\{?HOME\}?)(?:["'\s/*]|$)
+\brm\s+(?:-\S+\s+)*-\S*[rf]\S*\s+(?:-\S+\s+)*["']?/(?:Users|home|etc|var|usr|bin|sbin|lib|opt|boot|root|System|Library|Applications|private)(?:["'\s/]|$)
+# ── 파일시스템/디스크 파괴 ──
+\bmkfs(\.\w+)?\b
+\bdd\b[^|;&]*\bof=/dev/
+\b(shred|wipe)\b[^|;&]*/dev/
+>\s*/dev/(sd|nvme|disk|hd)
+# ── fork bomb ──
+:\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:
+# ── 데이터베이스 드롭 ──
+\bdrop\s+(database|schema|table)\b
+\bdropdb\b
+\btruncate\s+table\b
+# ── git 비가역 이력 변경 ──
+\bgit\s+push\b[^|;&]*(--force\b|\s-f\b)
+\bgit\s+branch\s+-D\b
+\bgit\s+clean\s+-[a-wyz]*f
+# ── 원격 리소스/계정 삭제(고신호 예시) ──
+\bgh\s+repo\s+delete\b
+\bvercel\s+(remove|rm)\b
+# ── 원격 코드 실행(파이프 투 셸) ──
+\b(curl|wget|fetch)\b[^|]*\|\s*(sudo\s+)?(ba|z|d)?sh\b
+\bbase64\b[^|]*\|\s*(sudo\s+)?(ba|z)?sh\b
+# ── 위험 실행자/간접 실행(완전 차단 불가 — backstop. 1차 방어는 AI 판단 + kill switch) ──
+\b(python3?|perl|ruby|node|deno)\s+-\S*[ce]\b[^\n]*(rmtree|removedirs|shutil\.|os\.remove|os\.unlink|unlink\()
+# find -delete / find -exec rm / rsync --delete / xargs rm -rf 는 경로 무관 파괴형(빌드#6 확장):
+# rm 차단은 의도적으로 루트/홈/시스템/glob 만이지만, 이 우회 형태들은 경로와 무관하게 backstop.
+\bfind\b[^|;&\n]*\s-delete\b
+\bfind\b[^|;&\n]*-exec(dir)?\s+rm\b
+\bfind\b[^|;&\n]*-exec(dir)?\s+\S*sh\b[^|;&\n]*\brm\b
+\brsync\b[^|;&\n]*\s--delete\b
+\bxargs\b[^|;&\n]*\brm\s+(?:-\S+\s+)*-\S*[rf]
+\btruncate\b[^|;&\n]*-s[^|;&\n]*["']?/(etc|boot|usr/bin|usr/sbin|bin|sbin|System)(/|["'\s]|$)
+# ── 권한 위험 ──
+\bchmod\s+-R\s+0?777\s+/
+\bchown\s+-R\b[^|;&]*\s/(\s|$)

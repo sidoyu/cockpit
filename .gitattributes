@@ -1,0 +1,14 @@
+# 발행 트리(git archive) 정의 — 단일 출처.
+# 빌드-내부 조율 문서는 수령자에게 배포할 필요가 없고, 개인 식별자(계정명·SHA·이메일)를
+# 포함하므로 발행 산출물(릴리스 tarball)에서 제외한다. secret-scan 의 PUBLISH 모드도
+# 이 export-ignore 속성을 단일 출처로 읽어 '발행될 파일만' 검사한다.
+#
+# ⚠ 주의: export-ignore 는 `git archive` 산출물(=릴리스 tarball)에만 적용된다.
+# repo 자체를 공개로 push 하면 docs/ 와 git 이력은 그대로 노출된다(공개/비공개 미결 — 발행 직전 결정).
+# 공개 repo 로 발행할 경우 docs/ 제거 + 이력 scrub 가 별도로 필요(publish-gate 가 경고).
+/docs export-ignore
+docs/** export-ignore
+
+# 줄끝 정규화: 셸 스크립트는 반드시 LF(WSL/bash 에서 CRLF 면 깨짐). autocrlf 환경 방어.
+# (PowerShell 은 LF/CRLF 모두 동작 + 서명 후 줄끝 변경 churn 회피 위해 규칙 두지 않음.)
+*.sh text eol=lf

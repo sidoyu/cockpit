@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  cockpit 원격 대시보드 — macOS launchd 자동시작 템플릿.
+  설치 마법사(또는 사용자)가 {{...}} 를 치환해 ~/Library/LaunchAgents/com.cockpit.dashboard.plist 로 둔다.
+    {{RUN_WRAPPER}}  = dashboard-run.sh 절대경로(설정 env 적재 후 서버 exec — plist 가 설정을 못 받는 문제 해소)
+    {{PATH_ENV}}     = PATH(예: /opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin)
+  로드:   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cockpit.dashboard.plist
+  비활성: plugin/dashboard/disable-remote.sh --apply  (영구 disable 포함)
+  개인 경로·IP·UUID 를 이 템플릿에 직접 박지 말 것 — 전부 치환값/설정파일로.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.cockpit.dashboard</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>{{RUN_WRAPPER}}</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>{{PATH_ENV}}</string>
+    </dict>
+    <key>ProcessType</key>
+    <string>Aqua</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/dev/null</string>
+    <key>StandardErrorPath</key>
+    <string>/dev/null</string>
+</dict>
+</plist>

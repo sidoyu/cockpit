@@ -1,0 +1,88 @@
+# CI — 빠른 검증(매 push/PR). 무거운 컨테이너 빌드는 golden-build.yml 로 분리.
+# 설계: 로직은 scripts/ 에 있고(로컬·CI 동일 실행), 이 워크플로는 얇게 호출만 한다.
+name: ci
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unix-checks:
+    name: Unix 검증(셸·파이썬·시크릿)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: 셸 구문(bash -n)
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            bash -n "$f" && echo "  ok $f" || { echo "  FAIL $f"; fail=1; }
+          done < <(git ls-files '*.sh')
+          exit $fail
+
+      - name: ShellCheck(있으면)
+        run: |
+          sudo apt-get update -y && sudo apt-get install -y shellcheck || { echo "shellcheck 설치 실패 — 건너뜀"; exit 0; }
+          # SC1091(소스 못찾음)·SC2129 등은 비차단. 심각 오류만 실패.
+          rc=0
+          while IFS= read -r f; do
+            shellcheck -S error "$f" || rc=1
+          done < <(git ls-files '*.sh')
+          exit $rc
+
+      - name: 파이썬 컴파일(훅)
+        run: |
+          python3 -m compileall -q plugin/hooks plugin/skills plugin/safety 2>&1 || exit 1
+
+      - name: 웹 JS 구문(node --check)
+        run: |
+          for j in $(git ls-files 'web/**/*.js'); do node --check "$j" && echo "  ok $j"; done
+
+      - name: 발행 트리 secret-scan(PUBLISH·차단)
+        run: PUBLISH=1 bash scripts/secret-scan.sh
+
+      - name: 발행 게이트 미리보기(비차단)
+        continue-on-error: true
+        run: bash scripts/publish-gate.sh
+
+  ps-static:
+    name: PowerShell 정적분석(5.1 + pwsh)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: PSScriptAnalyzer 설치
+        shell: pwsh
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+
+      - name: 파서+Analyzer (Windows PowerShell 5.1)
+        shell: powershell
+        run: .\scripts\ps-analyze.ps1
+
+      - name: 파서+Analyzer (pwsh 7)
+        shell: pwsh
+        run: ./scripts/ps-analyze.ps1
+
+  plugin-validate:
+    name: 플러그인 검증(best-effort)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: '20' }
+      - name: claude CLI 설치 + validate
+        env:
+          CC_VER: ${{ inputs.claude_code_version || '' }}
+        run: |
+          # CI validate 용 — 핀 입력 없으면 latest(이 잡은 발행 산출물 아님, plugin validate 만).
+          npm install -g "@anthropic-ai/claude-code${CC_VER:+@${CC_VER}}" || { echo "CLI 설치 실패 — 건너뜀"; exit 0; }
+          claude plugin validate ./plugin --strict || { echo "validate 실패/미지원 — 비차단"; exit 0; }
