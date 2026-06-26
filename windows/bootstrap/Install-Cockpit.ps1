@@ -10,7 +10,8 @@
     • **별도 배포판**(기본 cc-cockpit, 이름은 'cc-' 접두 강제). 기존 Ubuntu 등 다른 WSL 배포판을 건드리지 않는다.
       임의 이름은 -AllowCustomDistroName 고위험 플래그로만 허용.
     • 관리자 권한을 스스로 올리지 않는다. WSL 미설치 시 사용자가 직접 실행할 명령만 안내하고 종료.
-    • 위험 기능(bypass·원격·Codex)은 이미지에서 전부 OFF. 켜는 것은 첫 실행 /cockpit-setup 동의 게이트.
+    • 편의 설정(bypass·effort·model·원격조종·trust)은 이미지에 사전적용 출고. 단 **외부 송신(egress) 동의**·
+      Codex·자체호스팅 대시보드는 OFF — egress 는 첫 실행 /cockpit-setup 동의 한 화면, 나머지는 명시 설정 시에만.
 
   무결성: 이 배포본은 코드서명 인증서 미보유로 Authenticode 서명이 없다(unsigned).
     무결성은 다운로드한 .ps1·이미지의 SHA-256 을 웹 다운로드 표·이 스크립트의 핀과 대조해 보장한다:
@@ -24,6 +25,7 @@
 .PARAMETER InstallPath    배포판 디스크 폴더(기본 %LOCALAPPDATA%\<DistroName>).
 .PARAMETER Reinstall      같은 이름의 cockpit 배포판을 unregister 후 재설치(확인 프롬프트). 다른 배포판은 절대 미접촉.
 .PARAMETER SkipLaunch     설치 후 자동 진입하지 않음.
+.PARAMETER NoLauncher     원터치 런처(.cmd + 시작메뉴/바탕화면 바로가기) 생성을 건너뜀.
 .PARAMETER AllowUnpinnedImage     핀-미사용(미발행 미리보기 / URL·해시 오버라이드)을 명시 허용(고위험).
 .PARAMETER AllowCustomDistroName  'cc-' 접두가 아닌 임의 배포판 이름을 명시 허용(고위험 — 기존 배포판 오접촉 위험).
 
@@ -40,6 +42,7 @@ param(
   [string]$InstallPath,
   [switch]$Reinstall,
   [switch]$SkipLaunch,
+  [switch]$NoLauncher,
   [switch]$AllowUnpinnedImage,
   [switch]$AllowCustomDistroName
 )
@@ -48,8 +51,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ── 게시 시 치환되는 핀 고정값(빌드/릴리스 파이프라인이 채움) ──────────────
-$PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.0/cockpit-wsl.tar.gz'
-$PinnedSha256   = '948c1da970e0b67715baa1068492bf4f548782588dd29212c6d98b4514d3b127'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
+$PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.1/cockpit-wsl.tar.gz'
+$PinnedSha256   = 'd43ab033b08b6322ba596c75d2b2036109fdf2523a06b29dc575d0db1506ed65'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
+$MarketplaceUrl = 'https://github.com/sidoyu/cockpit'                                  # /plugin marketplace add 실주소(게시자 sidoyu·cc-companion).
 $PLACEHOLDER_HOSTS = @('example.invalid')
 
 function Info($m){ Write-Host "[cockpit] $m" }
@@ -201,14 +205,85 @@ finally {
   Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# ── 10) 안내 ──────────────────────────────────────────────────────────────
-Info "설치 완료 ✓  배포판 '$DistroName' 이 준비됐습니다(위험 기능은 전부 OFF)."
+# ── 10) 원터치 런처(.cmd + 시작메뉴/바탕화면 바로가기) ─────────────────────
+# 비개발자가 매번 명령을 치지 않도록: 더블클릭 한 번 = claude 실행. 래퍼(.cmd)가 wsl/배포판을
+# 호출하고, 시작메뉴(주)·바탕화면(보조) 바로가기가 그 .cmd 를 가리킨다.
+function New-CockpitLauncher {
+  param([string]$Distro)
+  $cockpitDir = Join-Path $env:LOCALAPPDATA 'Cockpit'
+  if (-not (Test-Path $cockpitDir)) { New-Item -ItemType Directory -Path $cockpitDir -Force | Out-Null }
+  $cmdPath = Join-Path $cockpitDir 'Launch-Cockpit.cmd'
+
+  # 래퍼 .cmd: ① wsl.exe 경로 확정(32비트 부모 대비 Sysnative 폴백) ② Windows Terminal 있으면 WT
+  #            ③ 없으면 콘솔 직접 — 시작 실패 시 창 유지(pause). launch.sh 가 claude 종료코드 처리.
+  $launch = '~/.cockpit/launch.sh'
+  $cmdLines = @(
+    '@echo off',
+    'title Claude (cockpit)',
+    'setlocal',
+    'set "WSL=wsl.exe"',
+    'where %WSL% >nul 2>nul || set "WSL=%WINDIR%\Sysnative\wsl.exe"',
+    ('where wt.exe >nul 2>nul && ( start "" wt.exe %WSL% -d ' + $Distro + ' bash -lc "' + $launch + '" ) || (' ),
+    ('  %WSL% -d ' + $Distro + ' bash -lc "' + $launch + '"'),
+    '  if errorlevel 1 (',
+    '    echo.',
+    '    echo [cockpit] Launch failed - check WSL/distro state:  wsl -l -v',
+    '    pause',
+    '  )',
+    ')',
+    'endlocal'
+  )
+  # cmd 파서는 ANSI/OEM 기대 → ASCII 로 기록(위 한글 echo 는 콘솔 코드페이지 의존, 비핵심).
+  Set-Content -Path $cmdPath -Value $cmdLines -Encoding Ascii
+  Info "런처 생성: $cmdPath"
+
+  # 바로가기(.lnk) — 아이콘은 wsl.exe(추후 cockpit 로고로 교체).
+  $iconPath = Join-Path $env:SystemRoot 'System32\wsl.exe'
+  $made = @()
+  try {
+    $ws = New-Object -ComObject WScript.Shell
+    $targets = @(
+      (Join-Path ([Environment]::GetFolderPath('Programs')) 'Claude (cockpit).lnk'),   # 시작메뉴(주)
+      (Join-Path ([Environment]::GetFolderPath('Desktop'))  'Claude (cockpit).lnk')    # 바탕화면(보조)
+    )
+    foreach ($t in $targets) {
+      $sc = $ws.CreateShortcut($t)
+      $sc.TargetPath       = $cmdPath
+      $sc.WorkingDirectory = $cockpitDir
+      $sc.IconLocation     = "$iconPath,0"
+      $sc.Description       = 'Claude Code (cockpit)'
+      $sc.Save()
+      $made += $t
+    }
+  } catch {
+    Warn "바로가기 생성 일부 실패(.cmd 는 생성됨): $($_.Exception.Message)"
+  }
+  foreach ($m in $made) { Info "바로가기 생성: $m" }
+  return $cmdPath
+}
+
+# ── 11) 안내 ──────────────────────────────────────────────────────────────
+Info "설치 완료 ✓  배포판 '$DistroName' 이 준비됐습니다(편의 설정 사전적용)."
+
+$LauncherCmd = $null
+if (-not $NoLauncher) {
+  try { $LauncherCmd = New-CockpitLauncher -Distro $DistroName }
+  catch { Warn "런처 생성 실패(수동 진입 가능): $($_.Exception.Message)" }
+}
+
 Write-Host ""
-Write-Host "다음 단계(배포판 안에서):" -ForegroundColor Green
-Write-Host "  1) claude                                  # Claude Code 로그인(최초 1회)"
-Write-Host "  2) /plugin marketplace add <소스>"
+Write-Host "다음 단계:" -ForegroundColor Green
+if ($LauncherCmd) {
+  Write-Host "  • 바탕화면/시작메뉴의 'Claude (cockpit)' 더블클릭 → claude 가 바로 실행됩니다."
+} else {
+  Write-Host "  • 진입:  wsl -d $DistroName"
+}
+Write-Host "  1) claude 로그인(최초 1회, 브라우저 OAuth). 이후 바로 사용."
+Write-Host ""
+Write-Host "  플러그인(아직 사전설치 전 — 최초 1회만):" -ForegroundColor Green
+Write-Host "  2) /plugin marketplace add $MarketplaceUrl"
 Write-Host "  3) /plugin install cockpit@cc-companion"
-Write-Host "  4) /cockpit-setup                          # 동의 → dry-run → 적용(롤백 가능)"
+Write-Host "  4) /cockpit-setup     # 거버넌스 동의 한 화면 + (원하면) 기억 외부송신 켜기"
 Write-Host ""
 Write-Host "통째 삭제(되돌리기):  wsl --unregister $DistroName   # 다른 배포판은 안 건드림" -ForegroundColor Cyan
 Write-Host ""

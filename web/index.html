@@ -115,7 +115,7 @@ wsl --update</code></pre>
           <p class="muted">해시가 다르면 실행하지 마세요. <code>Get-AuthenticodeSignature</code>는 이 빌드에서 <code>NotSigned</code>로 나오는 것이 정상입니다(서명층 없음). 이미지(<code>cockpit-wsl.tar.gz</code>)의 해시는 스크립트 안에 박혀 있어, 받아온 이미지를 import 전에 자동 대조합니다(불일치 시 삭제·중단).</p>
         </li>
         <li>
-          <p><strong>2) 부트스트랩 실행</strong> — 별도 배포판으로 import(위험 기능은 전부 OFF로 출고):</p>
+          <p><strong>2) 부트스트랩 실행</strong> — 별도 배포판으로 import(편의 설정 사전적용·외부 송신/Codex/자체호스팅 대시보드는 OFF):</p>
           <div class="code" data-gated>
             <button class="copy" type="button" aria-label="복사">복사</button>
 <pre><code>powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-Cockpit.ps1</code></pre>
@@ -200,10 +200,10 @@ bash plugin/dashboard/disable-remote.sh --apply</code></pre></div>
     <table class="dl">
       <thead><tr><th>산출물</th><th>대상</th><th>링크</th><th>SHA-256 / 서명</th></tr></thead>
       <tbody>
-        <tr><td>WSL2 배포판 이미지</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.0/cockpit-wsl.tar.gz" rel="nofollow">cockpit-wsl.tar.gz</a></td><td><code class="cksum">SHA-256: 948c1da970e0b67715baa1068492bf4f548782588dd29212c6d98b4514d3b127<br>(부트스트랩이 import 전 자동 대조)</code></td></tr>
-        <tr><td>PowerShell 부트스트랩</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.0/Install-Cockpit.ps1" rel="nofollow">Install-Cockpit.ps1</a></td><td><code class="cksum">SHA-256: f741b72734e2f1723fcb10191e8c75537a45311219ffb84d6a4043d93329221a<br>(서명 없음 — Get-FileHash 로 대조)</code></td></tr>
-        <tr><td>부트스트랩(스테이지드 폴백)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.0/Install-Cockpit-Staged.ps1" rel="nofollow">Install-Cockpit-Staged.ps1</a></td><td><code class="cksum">SHA-256: f40560ca3c3a80a3083666429e465a665fdadfdd7cfc8c7ebe7b2b7bb56560a7<br>(서명 없음)</code></td></tr>
-        <tr><td>이미지 출처(provenance)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.0/provenance.json" rel="nofollow">provenance.json</a></td><td><code class="cksum">— 베이스 digest·SBOM·빌드로그</code></td></tr>
+        <tr><td>WSL2 배포판 이미지</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.1/cockpit-wsl.tar.gz" rel="nofollow">cockpit-wsl.tar.gz</a></td><td><code class="cksum">SHA-256: d43ab033b08b6322ba596c75d2b2036109fdf2523a06b29dc575d0db1506ed65<br>(부트스트랩이 import 전 자동 대조)</code></td></tr>
+        <tr><td>PowerShell 부트스트랩</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.1/Install-Cockpit.ps1" rel="nofollow">Install-Cockpit.ps1</a></td><td><code class="cksum">SHA-256: 53cd789623b50e27f67f28e7028e0ac03dfe0fbd14ea8672a63c9b760252f781<br>(서명 없음 — Get-FileHash 로 대조)</code></td></tr>
+        <tr><td>부트스트랩(스테이지드 폴백)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.1/Install-Cockpit-Staged.ps1" rel="nofollow">Install-Cockpit-Staged.ps1</a></td><td><code class="cksum">SHA-256: d38a6fc7b5fd9072af99981ee5f7464fb8a3737c029ff8c4c937a29ca3f8a9c0<br>(서명 없음)</code></td></tr>
+        <tr><td>이미지 출처(provenance)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.1/provenance.json" rel="nofollow">provenance.json</a></td><td><code class="cksum">— 베이스 digest·SBOM·빌드로그</code></td></tr>
         <tr><td>플러그인(행동층)</td><td>공통</td><td><a href="https://github.com/sidoyu/cockpit" rel="nofollow">cockpit@cc-companion</a></td><td><code class="cksum">— (마켓플레이스)</code></td></tr>
       </tbody>
     </table>
@@ -245,7 +245,7 @@ bash plugin/dashboard/disable-remote.sh --apply</code></pre></div>
 
 <footer class="site-footer">
   <div class="wrap">
-    <p>cc-companion · cockpit <span id="ver">v0.1.0</span> · 개인 학습용 도구(회사 공식 IT 배포물 아님).</p>
+    <p>cc-companion · cockpit <span id="ver">v0.1.1</span> · 개인 학습용 도구(회사 공식 IT 배포물 아님).</p>
     <p class="links">
       <a href="../GOVERNANCE.md">거버넌스</a> ·
       <a href="../README.md">패키지 README</a> ·

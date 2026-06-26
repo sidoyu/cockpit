@@ -26,7 +26,7 @@
 
 ## 릴리스 치환 참조 (배포자용)
 
-v0.1.0 발행 완료 — 명령·링크는 실제 값으로 치환됨. 다음 릴리스 시 갱신 항목:
+v0.1.1 발행 — 명령·링크는 실제 값으로 치환됨. 다음 릴리스 시 갱신 항목:
 
 - [x] 마켓플레이스/릴리스 URL → `github.com/sidoyu/cockpit` 로 치환.
 - [ ] Windows `Install-Cockpit.ps1`(+ 스테이지드 `Install-Cockpit-Staged.ps1`) / `cockpit-wsl.tar.gz` / `provenance.json` 링크 + **SHA-256 체크섬** 채우기(이 빌드는 코드서명 없음 — 무결성은 체크섬 대조로만 보장, Authenticode 서명층 없음). 이미지 SHA-256 은 `Install-Cockpit.ps1` 의 `$PinnedSha256` 에도 박는다.

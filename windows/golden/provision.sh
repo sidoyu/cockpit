@@ -10,9 +10,13 @@
 #
 # 안전 불변식(절대 위반 금지 — secret-scan·Codex 게이트):
 #   • 개인정보·키·계정·사내 식별자 **0건**. 어떤 비밀도 이미지에 굽지 않는다.
-#   • 위험 기능 **전부 OFF**로 출고: bypass 미적용 · Codex 스위치 없음 · 원격 자동시작 없음.
-#     (사용자가 첫 실행 때 /cockpit-setup 으로 동의 게이트를 통과해야 켜진다.)
-#   • 멱등: 다시 실행해도 안전(이미 있으면 건너뜀). 사용자 데이터 영역은 만들지 않는다(첫 로그인 때).
+#   • v0.1.1 부터: 편의 설정은 사전적용(bypass·effort·model·remote-control·trust)하되,
+#     **외부 송신(egress) 동의만은 첫 실행 게이트로 남긴다**(동의 무결성). 즉 이미지에 절대
+#     굽지 않는 것: ① egress 동의 마커(STATE_DIR/setup_complete) ② Codex 스위치(codex_enabled)
+#     ③ 원격 대시보드(자체호스팅 뷰어) 자동시작 ④ 어떤 비밀/자격증명.
+#     (claude.ai Code 탭 원격조종 = remoteControlAtStartup, 아웃바운드 HTTPS 전용·수신포트 없음.)
+#   • 멱등: 다시 실행해도 안전(이미 있으면 건너뜀). 단 v0.1.1 부터 ~/.claude 사전설정은
+#     "비어있을 때만 생성"으로 보존(기존 사용자 데이터 미파괴).
 #
 # 파라미터(환경변수, 모두 선택 — 기본은 제네릭):
 #   COCKPIT_USER          이미지의 기본 비-root 사용자 (기본: cockpit)
@@ -31,6 +35,12 @@ COCKPIT_USER="${COCKPIT_USER:-cockpit}"
 COCKPIT_PLUGIN_SRC="${COCKPIT_PLUGIN_SRC:-/tmp/cockpit-plugin}"
 COCKPIT_INSTALL_CC="${COCKPIT_INSTALL_CC:-1}"
 COCKPIT_MARKETPLACE="${COCKPIT_MARKETPLACE:-https://example.invalid/cc-companion}"
+# v0.1.1 사전설정 프로필(동윤님 맥미니 행동키 복제·2026-06-26 결정). 모두 선택 override 가능.
+#   COCKPIT_MODEL_PIN="" 로 비우면 model 미핀(계정 기본 모델). 기본=Opus 4.8 1M(동료 Pro+ 전제).
+COCKPIT_PRECONFIGURE="${COCKPIT_PRECONFIGURE:-1}"          # 0이면 ~/.claude 사전설정 전부 건너뜀(구 OFF-출고 동작)
+COCKPIT_MODEL_PIN="${COCKPIT_MODEL_PIN-claude-opus-4-8[1m]}"
+COCKPIT_EFFORT="${COCKPIT_EFFORT:-xhigh}"
+COCKPIT_PRIMARY_LANGUAGE="${COCKPIT_PRIMARY_LANGUAGE:-한국어}"
 
 # 사용자명 위생(옵션 주입 방지) — 반드시 [a-z_] 로 시작, 이후 [a-z0-9_-], 길이 ≤32.
 # 선행 '-' 차단으로 useradd/usermod/chown 옵션 오해석을 원천 봉쇄(+ 아래 '--' 구분자 이중방어).
@@ -138,25 +148,137 @@ log "6) 첫 실행 안내(MOTD) 작성"
 cat > "$USER_HOME/README-first-run.txt" <<EOF
 cockpit (cc-companion) — WSL2 골든 이미지
 =========================================
-이 배포판은 '거의 그대로 쓰도록' 준비됐지만, 위험 기능은 전부 꺼진 채 출고됩니다.
-켜는 것은 당신이 동의 게이트를 통과할 때만 일어납니다.
+편의 설정(자율 진행·추론강도·모델·원격조종·폴더신뢰)은 미리 적용돼 있습니다.
+당신이 직접 켜야 하는 것은 단 하나 — **기억을 외부로 올리는 동의**(첫 실행 한 화면)입니다.
 
-첫 실행 순서:
-  1) claude            # Claude Code 로그인(브라우저 OAuth) — 최초 1회
-  2) /plugin marketplace add $COCKPIT_MARKETPLACE
-  3) /plugin install cockpit@cc-companion
-  4) /cockpit-setup    # 설치 마법사: 동의 → 충돌검사 → dry-run → 적용(롤백 가능)
-  5) /cockpit-doctor   # 언제든 상태 점검(원격 ON/OFF·보조검토 ON/OFF)
+첫 실행:
+  1) claude            # Claude Code 로그인(브라우저 OAuth) — 최초 1회. 이후 바로 사용.
 
-스테이징된 플러그인: /opt/cockpit  (참조본)
-거버넌스 경계: /opt/cockpit/GOVERNANCE.md 를 먼저 읽으세요.
+플러그인 사용(아직 사전설치 전 단계라 최초 1회만):
+  /plugin marketplace add $COCKPIT_MARKETPLACE
+  /plugin install cockpit@cc-companion
+  /cockpit-setup       # 거버넌스 동의 한 화면 + (원하면) 기억 외부송신 켜기
+
+원격조종(claude.ai Code 탭에서 이 세션 잇기): 이미 켜져 있습니다(remoteControlAtStartup).
+  claude.ai/code 에 같은 계정으로 들어가면 세션 목록에 나타납니다. 수신 포트를 열지
+  않고 아웃바운드(나가는) 통신만 씁니다 — VPN/포트 설정 불필요.
+
+언제든 상태 점검: /cockpit-doctor   ·   거버넌스 경계: /opt/cockpit/GOVERNANCE.md
 
 끄기/지우기:
   • 자동진행 즉시정지:  touch ~/.claude/CC_KILL_SWITCH
+  • 원격조종 끄기:      claude /config 에서 "Enable Remote Control for all sessions" → false
   • 이 배포판 통째 삭제(Windows PowerShell):  wsl --unregister cc-cockpit
     (기존 Ubuntu 등 다른 배포판은 건드리지 않습니다.)
 EOF
 chown -- "$COCKPIT_USER:$COCKPIT_USER" "$USER_HOME/README-first-run.txt"
+
+# ── 6.5) 사용자 사전설정(v0.1.1: 동료는 로그인만 — 동의 한 화면 제외) ─────────
+# 동윤님 맥미니 행동키를 이미지에 복제: 원터치 런처·자동업뎃끄기·settings(bypass·effort·
+# model·remote-control)·trust·CLAUDE.md(1차 방어)·메모리 템플릿. **egress 동의 마커는
+# 굽지 않는다**(첫 실행 게이트). 각 파일은 "없을 때만 생성"으로 기존 데이터 보존.
+if [ "$COCKPIT_PRECONFIGURE" = "1" ]; then
+  log "6.5) 사용자 사전설정(런처·settings·trust·CLAUDE.md·메모리)"
+  CLAUDE_DIR="$USER_HOME/.claude"
+  install -d -m 0755 "$CLAUDE_DIR"
+
+  # bypass 는 CLAUDE.md(멈춰 질문 1차 방어)와 **반드시 동반**. 템플릿이 없으면(예: staged 경로에서
+  # 플러그인 미스테이징) bypass 를 켜지 않는다 — bypass ON 인데 1차 방어 없는 상태로 출고 금지(Codex 발견1).
+  _tmpl="$STAGE_DIR/templates/CLAUDE.md.template"
+  _bake_bypass=1
+  if [ ! -f "$_tmpl" ]; then
+    _bake_bypass=0
+    warn "CLAUDE.md 템플릿 부재($_tmpl) — 1차 방어 없이 bypass 미적용(model/effort/remote 만 사전설정). 첫 실행 /cockpit-setup 으로 CLAUDE.md+bypass 함께 적용."
+  fi
+
+  # (a) 원터치 런처 — Windows .cmd/.lnk 가 이 스크립트를 호출(검증된 산출물).
+  install -d -m 0755 "$USER_HOME/.cockpit"
+  if [ ! -e "$USER_HOME/.cockpit/launch.sh" ]; then
+    cat > "$USER_HOME/.cockpit/launch.sh" <<'LAUNCH'
+#!/usr/bin/env bash
+# cockpit 원터치 런처 — Windows 바로가기가 호출(wsl.exe -d cc-cockpit ...).
+export LANG=C.UTF-8
+export DISABLE_AUTOUPDATER=1   # 자동업뎃 빨간경고 제거(수동 `claude update` 는 막지 않음)
+cd "$HOME" 2>/dev/null || cd /
+claude
+ec=$?
+if [ "$ec" -ne 0 ]; then
+  echo; echo "[cockpit] claude 종료 코드 $ec"
+  read -r -p "닫으려면 Enter..."
+fi
+LAUNCH
+    chmod 0755 "$USER_HOME/.cockpit/launch.sh"
+  fi
+
+  # (b) 자동업뎃 끄기 — 직접 `claude` 입력 경로(런처 미경유)도 커버. 로그인 셸 전역.
+  if [ ! -e /etc/profile.d/cockpit.sh ]; then
+    printf '%s\n' '# cockpit: 자동업데이트 비활성(빨간 경고 제거). DISABLE_UPDATES 와 달리 수동 update 는 허용.' \
+                  'export DISABLE_AUTOUPDATER=1' > /etc/profile.d/cockpit.sh
+    chmod 0644 /etc/profile.d/cockpit.sh
+  fi
+
+  # (c) settings.json — effort·model·remoteControlAtStartup 는 항상, bypass·skipDangerous 는
+  #     _bake_bypass=1(=CLAUDE.md 동반 가능) 일 때만. model 핀은 COCKPIT_MODEL_PIN="" 면 생략
+  #     (계정 기본). 개인 permissions.allow 는 미포함.
+  if [ ! -e "$CLAUDE_DIR/settings.json" ]; then
+    if command -v python3 >/dev/null 2>&1; then
+      python3 - "$CLAUDE_DIR/settings.json" "$COCKPIT_MODEL_PIN" "$COCKPIT_EFFORT" "$_bake_bypass" <<'PYSET'
+import json, sys
+out, model, effort, bake_bypass = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+s = {
+    "effortLevel": effort,
+    "remoteControlAtStartup": True,              # claude.ai Code 탭 연결(아웃바운드 HTTPS·수신포트 없음)
+}
+if bake_bypass == "1":
+    s["permissions"] = {"defaultMode": "bypassPermissions"}
+    s["skipDangerousModePermissionPrompt"] = True  # bypass 경고("Yes, I accept") 자동 수락
+if model:
+    s["model"] = model
+with open(out, "w", encoding="utf-8") as f:
+    json.dump(s, f, ensure_ascii=False, indent=2)
+PYSET
+      chmod 0644 "$CLAUDE_DIR/settings.json"
+    else
+      warn "python3 없음 — settings.json 사전설정 건너뜀(첫 실행 /cockpit-setup 으로 적용 가능)."
+    fi
+  fi
+
+  # (d) trust — 첫 실행 "Is this a project you trust?" 자동 수락(~/.claude.json).
+  #     포맷 검증함(실 ~/.claude.json projects[dir].hasTrustDialogAccepted). 최악=다이얼로그 1회.
+  if [ ! -e "$USER_HOME/.claude.json" ] && command -v python3 >/dev/null 2>&1; then
+    python3 - "$USER_HOME/.claude.json" "$USER_HOME" <<'PYTRUST'
+import json, sys, os
+out, home = sys.argv[1], sys.argv[2]
+data = {"hasCompletedOnboarding": True, "projects": {home: {"hasTrustDialogAccepted": True}}}
+with open(out, "w", encoding="utf-8") as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
+PYTRUST
+    chmod 0644 "$USER_HOME/.claude.json"
+  fi
+
+  # (e) CLAUDE.md — 행동 규율(멈춰 질문·deny-list 1차 방어). bypass ON 의 전제라 필수 동반($_tmpl 위에서 판정).
+  if [ ! -e "$CLAUDE_DIR/CLAUDE.md" ] && [ -f "$_tmpl" ]; then
+    sed "s/{{PRIMARY_LANGUAGE}}/$COCKPIT_PRIMARY_LANGUAGE/g" "$_tmpl" > "$CLAUDE_DIR/CLAUDE.md"
+    chmod 0644 "$CLAUDE_DIR/CLAUDE.md"
+  fi
+
+  # (f) 메모리 저장소 — 예시 템플릿(비어있을 때만). cc_paths 기본 = ~/.claude/cc-memory.
+  _memsrc="$STAGE_DIR/memory-template"
+  _memdst="$CLAUDE_DIR/cc-memory"
+  if [ -d "$_memsrc" ] && { [ ! -d "$_memdst" ] || [ -z "$(ls -A "$_memdst" 2>/dev/null)" ]; }; then
+    install -d -m 0755 "$_memdst"
+    for _f in "$_memsrc"/*.md; do [ -e "$_f" ] && cp -a "$_f" "$_memdst/"; done
+  fi
+
+  # (g) 런타임 상태 디렉터리(빈 채로) — setup_complete 마커는 **굽지 않음**(egress 첫 실행 동의).
+  install -d -m 0755 "$CLAUDE_DIR/cc-companion"
+
+  chown -R -- "$COCKPIT_USER:$COCKPIT_USER" "$CLAUDE_DIR" "$USER_HOME/.cockpit" \
+              "$USER_HOME/.claude.json" 2>/dev/null || true
+  log "   사전설정 완료(egress 마커 미포함·codex 스위치 미포함·자체호스팅 대시보드 미시작)."
+else
+  log "6.5) 사전설정 건너뜀(COCKPIT_PRECONFIGURE=0 — 구 OFF-출고 동작)."
+fi
 
 # ── 7) 빌드 버전 기록(provenance/SBOM 소스 + 이미지 내부 감사) ──────
 # 재현성 보강: 무엇이 어떤 버전으로 들어갔는지 이미지 안에 남긴다. build-rootfs.sh 가
@@ -190,4 +312,5 @@ cat > /opt/cockpit/build-versions.json <<EOF
 EOF
 chmod 0644 /opt/cockpit/build-versions.json
 
-log "프로비저닝 완료. 위험 기능 OFF 출고 확인: bypass 미적용·Codex 스위치 없음·원격 자동시작 없음."
+log "프로비저닝 완료. 사전적용=bypass·effort·model·remote-control·trust(사용자 데이터 미파괴)."
+log "  굽지 않음(불변): egress 동의 마커·Codex 스위치·자체호스팅 대시보드 자동시작·비밀/자격증명."

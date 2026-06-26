@@ -113,8 +113,11 @@ else
   WARN "/etc/sudoers.d/90-cockpit 없음(커스텀 베이스면 가능)"
 fi
 
-# ── 6) 위험 기능 OFF 출고 불변식(핵심) ──
-sec "6) 위험 기능 OFF 출고 불변식"
+# ── 6) 출고 불변식(핵심) ──
+# v0.1.1: 편의 설정(bypass·effort·model·remote-control·trust)은 **의도된 사전적용**.
+# 동의 무결성은 "외부 송신(egress) 동의 마커가 굽히지 않음"으로 보장한다(아래 (e)).
+# 끝까지 OFF 유지 불변식 = ① egress 마커 ② Codex 스위치 ③ 자체호스팅 대시보드 자동시작 ④ 비밀.
+sec "6) 출고 불변식(egress 동의·Codex·자체호스팅 대시보드 OFF 유지)"
 # (a) Codex 스위치 미존재
 if find "$ROOTFS"/home "$ROOTFS"/root -name 'codex_enabled' 2>/dev/null | grep -q .; then
   FAIL "codex_enabled 스위치가 이미지에 구워짐 — OFF 출고 위반"
@@ -123,13 +126,21 @@ else OK "codex_enabled 스위치 없음"; fi
 if find "$ROOTFS"/home "$ROOTFS"/root -name 'CC_KILL_SWITCH' 2>/dev/null | grep -q .; then
   WARN "CC_KILL_SWITCH 가 이미지에 존재(사용자 동작이어야 함 — 확인)"
 else OK "CC_KILL_SWITCH 사전생성 없음"; fi
-# (c) bypass 권한 설정 미적용
-BADSET=""
+# (c) settings.json 프로필 — bypass 사전적용은 v0.1.1 의도(동의 무결성은 (e) egress 마커 부재로
+#     보장). 따라서 bypass 존재 자체는 FAIL 아님 — 정보로 보고. (구 PRECONFIGURE=0 빌드면 미존재.)
+PROFILE=""
 while IFS= read -r s; do
-  grep -qiE 'bypassPermissions|"dangerously|acceptEdits.*true' "$s" 2>/dev/null && BADSET="$BADSET ${s#$ROOTFS}"
+  grep -qiE 'bypassPermissions' "$s" 2>/dev/null && PROFILE="$PROFILE ${s#$ROOTFS}"
 done < <(find "$ROOTFS"/home "$ROOTFS"/root -path '*/.claude/settings*.json' 2>/dev/null)
-[ -z "$BADSET" ] && OK "bypass/위험 권한 설정 미적용" || FAIL "위험 권한 설정 발견:$BADSET"
+[ -n "$PROFILE" ] && OK "settings 사전적용 프로필(bypass 등) 존재:$PROFILE (v0.1.1 의도)" \
+                  || OK "settings bypass 미적용(PRECONFIGURE=0/구버전)"
+# (e) egress 동의 마커 미베이크(핵심 불변식) — 구워지면 첫 실행 동의 없이 외부송신 활성화.
+if find "$ROOTFS"/home "$ROOTFS"/root -path '*/cc-companion/setup_complete' 2>/dev/null | grep -q .; then
+  FAIL "egress 동의 마커(setup_complete)가 이미지에 구워짐 — 동의 무결성 위반(무동의 외부송신)."
+else OK "egress 동의 마커 미베이크(첫 실행 동의 게이트 유지)"; fi
 # (d) 원격 자동시작 없음 — systemd(system/user)·cron·rc.local·shell profile·skel 까지 폭넓게.
+#     주의: claude.ai Remote Control(settings remoteControlAtStartup)은 수신 포트·데몬이 없는
+#     아웃바운드 폴링이라 여기 패턴에 안 걸린다. 본 검사는 **자체호스팅 대시보드** 자동시작 한정.
 #     (Codex 지적: /etc/systemd 이름패턴만으론 user unit·cron·profile·rc.local 경로를 놓침)
 AUTO_DIRS=()
 for d in etc/systemd etc/rc.local etc/cron.d etc/cron.daily etc/cron.hourly etc/cron.weekly \

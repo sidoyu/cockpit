@@ -25,7 +25,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/setup-wizard/setup.py" doctor
 ```
 출력의 ✗(치명)·⚠(주의)를 사용자에게 한국어로 풀어 설명한다. 특히:
 - `~/.claude/CLAUDE.md` 가 이미 있고 템플릿과 다르면: **기본은 보존(덮어쓰지 않음)**이라 install 이 거부된다. 기존 운영 규칙을 잃지 않으려면 그대로 두고 템플릿 내용을 수동 병합하거나, 정말 교체하려면 `--replace-claude-md`(교체 전 자동 백업 → rollback 복원 가능)를 함께 전달한다.
-- `ANTHROPIC_API_KEY` 가 없으면: 메모리 **자동 추출**만 비활성(나머지는 정상)임을 알린다. 키 설정을 원하면 안내(개인 키, 셸 프로필 export).
+- 메모리 **자동 추출** 키가 없으면 자동추출만 비활성(나머지는 정상)임을 알린다. 키 설정을 원하면 **`ANTHROPIC_API_KEY_FOR_SCRIPTS`** 로 안내한다(개인 키, 셸 프로필 export). ⚠️ `ANTHROPIC_API_KEY` 로 두면 claude.ai **Remote Control 이 거부**되므로(키 설정 시 비활성), 이미지 배포본에서는 반드시 `_FOR_SCRIPTS` 변형을 쓴다.
 
 ### 2. 미리보기 (dry-run)
 ```
@@ -34,13 +34,17 @@ python3 ".../setup.py" install            # 기본이 dry-run
 바뀔 작업 목록을 보여주고 사용자 확인을 받는다.
 
 ### 3. bypass 결정 (위험 — 멈춰 질문)
-"권한 확인 생략(bypass)을 켤까요?"를 **명시적으로** 묻는다. 장점(매번 확인 팝업 없음)과 위험(파괴 명령 자동 실행 가능 — deny-list 가 backstop)을 균형있게 설명한다. 추천: 처음엔 **끄고 시작**, 익숙해지면 켜기. 사용자가 켜기로 하면 다음 단계에 `--enable-bypass` 추가.
+"권한 확인 생략(bypass)을 켤까요?"를 **명시적으로** 묻는다. 장점(매번 확인 팝업 없음)과 위험(파괴 명령 자동 실행 가능 — deny-list 가 backstop)을 균형있게 설명한다. 사용자가 켜기로 하면 다음 단계에 `--enable-bypass` 추가.
+> **참고**: cockpit WSL 골든 이미지(동료 배포본)는 **bypass 가 이미 settings.json 에 사전적용**돼 있다(2026-06-26 결정·"동의 한 화면" 외 기술세팅 사전화). 이 경우 본 단계는 "이미 켜져 있음"을 알리고, 끄려면 settings.json 의 `permissions.defaultMode` 를 제거/`ask` 로 바꾸도록 안내한다. 플러그인만 따로 설치한 비-이미지 환경에서는 위처럼 명시 질문한다.
+
+### 3.5 메모리 외부송신(egress) 결정 (별도 — 멈춰 질문)
+"기억할 만한 내용을 자동 추출해 **Anthropic API 로 외부 송신**할까요?"를 **bypass 와 별개로** 묻는다. (bypass 동의가 egress 를 자동으로 켜지 않는다 — v0.1.1 분리.) 끄면 메모리 시스템은 **로컬에서 정상 동작**하고 자동추출만 비활성된다. 켜기로 하면 다음 단계에 `--enable-memory-egress` 추가. ⚠️ 의료/PII 맥락에선 신중히(GOVERNANCE §3).
 
 ### 4. 설치 (apply)
 ```
-python3 ".../setup.py" install --apply [--i-accept-governance] [--enable-bypass] [--replace-claude-md]
+python3 ".../setup.py" install --apply [--i-accept-governance] [--enable-bypass] [--enable-memory-egress] [--replace-claude-md]
 ```
-`--i-accept-governance` 는 GOVERNANCE(특히 §3 이중 송출·§8 동의)를 읽고 동의했다는 신호다. **이 플래그가 있을 때만** ① `--enable-bypass`(권한 확인 생략)가 허용되고, ② **메모리 자동 추출의 외부 송신(egress)이 활성화**된다(없으면 세션 본문이 외부로 나가지 않음 — 키가 있어도 no-op). **0단계에서 사용자가 명시적으로 동의했을 때만** `--i-accept-governance` 를 전달한다. bypass 는 별도로 다시 묻는다(3단계). 기존 CLAUDE.md 가 다르면 `--replace-claude-md` 없이는 보존(거부)된다.
+`--i-accept-governance` 는 GOVERNANCE(특히 §3 외부 송출·§8 동의)를 읽고 동의했다는 신호로, **위험 기능 플래그의 공통 전제**다. 동의만으로는 아무 위험 기능도 켜지지 않으며, **각 기능마다 별도 플래그가 추가로 필요**하다: ① `--enable-bypass`(권한 확인 생략) ② `--enable-memory-egress`(메모리 자동추출의 외부 송신 — 없으면 세션 본문이 외부로 나가지 않음, 키가 있어도 no-op). **0단계에서 사용자가 명시적으로 동의했을 때만** `--i-accept-governance` 를 전달하고, bypass·egress 는 각각 3·3.5단계 결정에 따라 해당 플래그를 붙인다. 기존 CLAUDE.md 가 다르면 `--replace-claude-md` 없이는 보존(거부)된다.
 완료 후: ① `~/.claude/CLAUDE.md` 의 `{{...}}` 플레이스홀더(언어·역할·경로 약칭 등)를 사용자와 함께 채운다. ② 메모리 저장소(`~/.claude/cc-memory`)에 예시 메모리가 들어갔음을 알리고, 본인 것으로 교체/삭제하도록 안내한다. ③ 새 세션을 시작하면 세션 시작 훅이 PROJECT_STATUS 를 주입하고, 종료 시 기억 후보가 쌓임을 설명한다.
 
 ### 5. 사후 점검
@@ -60,6 +64,8 @@ python3 ".../setup.py" rollback --list      # 백업 스냅샷 목록
 ## 끄기/긴급정지 (사용자에게 안내)
 - **보조 검토 끄기**: `rm ~/.claude/codex_enabled` (해당 기능 활성화 시)
 - **bypass 끄기**: `setup.py rollback` 또는 settings.json 의 `permissions.defaultMode` 를 제거/`ask` 로
+- **메모리 외부송신(egress) 끄기**: `rm ~/.claude/cc-companion/setup_complete` (마커 삭제 → 자동추출 즉시 no-op). `setup.py rollback` 도 마커를 제거한다.
+- **원격조종 끄기**: `claude /config` 에서 "Enable Remote Control for all sessions" → `false` (또는 settings.json `remoteControlAtStartup: false`)
 - **긴급정지(즉시 자동 진행 중단)**: `touch ~/.claude/CC_KILL_SWITCH` → 모든 Bash·쓰기 도구가 차단됨. 재개: `rm ~/.claude/CC_KILL_SWITCH`
 - **감사 로그 확인**: `~/.claude/cc-companion/audit.log` (차단·강행 기록)
 

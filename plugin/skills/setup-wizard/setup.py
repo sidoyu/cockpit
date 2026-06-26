@@ -4,13 +4,16 @@
 
 서브커맨드:
   doctor                    환경·충돌 점검(읽기 전용, 변경 없음)
-  install [--dry-run|--apply] [--enable-bypass]
-                            메모리 디렉터리·CLAUDE.md·(선택)bypass 설치. 기본 = dry-run.
+  install [--dry-run|--apply] [--enable-bypass] [--enable-memory-egress]
+                            메모리 디렉터리·CLAUDE.md·(선택)bypass·(선택)egress 설치. 기본 = dry-run.
                             모든 변경은 백업 후 진행 → rollback 으로 되돌림.
   rollback [--latest|--list]  마지막(또는 지정) 백업으로 복원.
 
 설계: 기존 사용자 데이터를 **덮어쓰지 않는다**(비어있을 때만 채움). settings.json 은
-  로드→수정→백업→기록(다른 설정 보존). 위험 동작(bypass)은 명시 플래그 + 동의 전제.
+  로드→수정→백업→기록(다른 설정 보존). 위험 동작은 **독립 게이트**:
+  • bypass(권한 확인 생략)  = --enable-bypass + --i-accept-governance
+  • 메모리 외부송신(egress) = --enable-memory-egress + --i-accept-governance
+  동의(--i-accept-governance) 만으로는 둘 중 어느 것도 켜지지 않는다(각 기능 플래그가 별도 필수).
 경로 규약은 cc_paths(단일 출처) 재사용.
 """
 import sys, os, json, shutil, time, argparse, subprocess
@@ -127,10 +130,16 @@ def doctor():
     if mode == "bypassPermissions":
         _p(WARN, "bypass(권한 확인 생략) 이미 켜져 있음 — GOVERNANCE.md 경계 준수 필수")
 
-    # extraction key (선택)
-    has_key = bool(os.environ.get("ANTHROPIC_API_KEY_FOR_SCRIPTS") or os.environ.get("ANTHROPIC_API_KEY"))
-    _p(INFO if has_key else WARN, "기억 추출용 ANTHROPIC_API_KEY: %s" %
+    # extraction key (선택) — Remote Control 은 ANTHROPIC_API_KEY 가 설정돼 있으면 거부되므로,
+    # 메모리 추출 키는 ANTHROPIC_API_KEY_FOR_SCRIPTS 로 두는 것을 권장(충돌 회피).
+    key_scripts = bool(os.environ.get("ANTHROPIC_API_KEY_FOR_SCRIPTS"))
+    key_plain = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    has_key = key_scripts or key_plain
+    _p(INFO if has_key else WARN, "기억 추출용 키(ANTHROPIC_API_KEY_FOR_SCRIPTS 권장): %s" %
        ("설정됨" if has_key else "없음 — 메모리 자동 추출은 비활성(나머지 기능은 정상)"))
+    if key_plain and not key_scripts:
+        _p(WARN, "ANTHROPIC_API_KEY 설정됨 — claude.ai Remote Control 과 충돌 가능(키 설정 시 Remote Control 거부). "
+                 "추출 키는 ANTHROPIC_API_KEY_FOR_SCRIPTS 로 옮기는 것을 권장.")
 
     # kill switch
     if os.path.exists(KILL_SWITCH):
@@ -198,11 +207,15 @@ def _files_differ(a, b):
 
 
 # ───────────────────────── install ─────────────────────────
-def install(apply, enable_bypass, accepted=False, replace_claude_md=False):
+def install(apply, enable_bypass, accepted=False, replace_claude_md=False, enable_egress=False):
     if enable_bypass and not accepted:
         print("✗ --enable-bypass 는 거버넌스 동의가 필요합니다.")
         print("  GOVERNANCE.md(특히 0·2·3장)를 읽고 이해했다면 --i-accept-governance 를 함께 지정하세요.")
         print("  설치 마법사(cockpit-setup 스킬)를 쓰면 동의 절차를 안내합니다.")
+        return 2
+    if enable_egress and not accepted:
+        print("✗ --enable-memory-egress(메모리 자동추출 외부송신)는 거버넌스 동의가 필요합니다.")
+        print("  GOVERNANCE.md(특히 §3 외부 송출·§8 동의)를 읽고 이해했다면 --i-accept-governance 를 함께 지정하세요.")
         return 2
     mode_label = "APPLY(실제 변경)" if apply else "DRY-RUN(미리보기, 변경 없음)"
     print("[cockpit install] %s\n" % mode_label)
@@ -288,19 +301,21 @@ def install(apply, enable_bypass, accepted=False, replace_claude_md=False):
     # 5) egress 동의 마커 = 외부 egress 게이트 단일 신호. 이 파일이 있어야 메모리 자동추출이
     #    세션 본문을 Anthropic API 로 송출한다(extract_pending._egress_consented). 플러그인
     #    defaultEnabled=true 라 설치 직후 Stop hook 이 로드되지만, 이 마커가 없으면 키가 있어도
-    #    no-op. 마커는 **--i-accept-governance(GOVERNANCE §3 egress 고지·§8 동의)** 가 있을 때만
-    #    기록한다 — egress 동의를 prose(마법사)뿐 아니라 CLI 코드에서 강제. rollback 이 마커 제거
-    #    → egress 다시 OFF. (API 키 존재 opt-in 과 AND 결합 = 이중 게이트.)
+    #    no-op. v0.1.1 부터 마커는 **--enable-memory-egress + --i-accept-governance** 둘 다
+    #    있을 때만 기록한다 — bypass 동의(--i-accept-governance)가 egress 를 자동으로 켜지
+    #    않도록 분리(이미지 bypass ON 기본화 시 egress 도 함께 켜지는 사고 방지). enable_egress
+    #    는 위 preflight 에서 accepted 를 이미 보장. rollback 이 마커 제거 → egress 다시 OFF.
+    #    (API 키 존재 opt-in 과 AND 결합 = 이중 게이트.)
     SETUP_MARKER = os.path.join(STATE_DIR, "setup_complete")
-    if accepted:
-        actions.append("egress 동의 마커 기록(메모리 자동추출 활성, --i-accept-governance): %s" % SETUP_MARKER)
+    if enable_egress:
+        actions.append("egress 동의 마커 기록(메모리 자동추출 외부송신 활성, --enable-memory-egress + --i-accept-governance): %s" % SETUP_MARKER)
         if apply:
             os.makedirs(STATE_DIR, exist_ok=True)
             with open(SETUP_MARKER, "w", encoding="utf-8") as f:
                 f.write("setup complete %s\n" % ts)
             created_files.append(SETUP_MARKER)
     else:
-        actions.append("egress(메모리 자동추출 외부송신) 비활성 유지 — 켜려면 --i-accept-governance(GOVERNANCE §3 동의)")
+        actions.append("egress(메모리 자동추출 외부송신) 비활성 유지 — 켜려면 --enable-memory-egress + --i-accept-governance(GOVERNANCE §3)")
 
     # 출력
     for a in actions:
@@ -394,8 +409,10 @@ def main():
     ip.add_argument("--apply", action="store_true", help="실제 변경(기본=dry-run)")
     ip.add_argument("--dry-run", action="store_true", help="미리보기(기본)")
     ip.add_argument("--enable-bypass", action="store_true", help="권한 확인 생략(bypass) 활성화(동의 전제)")
+    ip.add_argument("--enable-memory-egress", action="store_true",
+                    help="메모리 자동추출의 외부 송신(egress) 활성화(동의 전제) — bypass 와 독립")
     ip.add_argument("--i-accept-governance", action="store_true",
-                    help="GOVERNANCE.md 동의 확인 — --enable-bypass 에 필수")
+                    help="GOVERNANCE.md 동의 확인 — --enable-bypass / --enable-memory-egress 에 필수")
     ip.add_argument("--replace-claude-md", action="store_true",
                     help="기존 ~/.claude/CLAUDE.md 를 템플릿으로 교체(기본=보존, 교체 전 자동 백업)")
     rb = sub.add_parser("rollback")
@@ -406,7 +423,8 @@ def main():
         return doctor()
     if args.cmd == "install":
         return install(apply=args.apply and not args.dry_run, enable_bypass=args.enable_bypass,
-                       accepted=args.i_accept_governance, replace_claude_md=args.replace_claude_md)
+                       accepted=args.i_accept_governance, replace_claude_md=args.replace_claude_md,
+                       enable_egress=args.enable_memory_egress)
     if args.cmd == "rollback":
         return rollback("--list" if args.list else "--latest")
     return 1

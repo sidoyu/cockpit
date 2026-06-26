@@ -1,8 +1,9 @@
 # Windows 트랙 — WSL2 골든 이미지 + PowerShell 부트스트랩
 
 > 비개발 동료가 Windows 에서 cockpit(cc-companion) 을 **별도 WSL2 배포판**으로 거의 그대로 설치하는 경로.
-> 기존 Ubuntu 등 다른 WSL 배포판을 건드리지 않는다. 위험 기능(bypass·원격·Codex)은 **전부 OFF 로 출고**되며,
-> 켜는 것은 첫 실행 `/cockpit-setup` 동의 게이트를 통과할 때만 일어난다.
+> 기존 Ubuntu 등 다른 WSL 배포판을 건드리지 않는다. v0.1.1 부터 편의 설정(bypass·effort·model·원격조종·trust)은
+> 동료가 "로그인만" 하도록 **사전적용 출고**하되, **외부 송신(egress) 동의**·Codex·자체호스팅 대시보드는 OFF —
+> egress 는 첫 실행 `/cockpit-setup` 동의 한 화면, 나머지는 명시 설정 시에만 켜진다(`scripts/smoke-image.sh` 가 검증).
 
 ---
 
