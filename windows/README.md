@@ -82,7 +82,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-Cockpit-Staged.ps1
 
 ## 끄기 · 되돌리기
 - 자동 진행 즉시정지(배포판 안): `touch ~/.claude/CC_KILL_SWITCH`
-- 원격/Codex 끄기: `/cockpit-doctor` 안내(원격은 기본 OFF) · `rm ~/.claude/codex_enabled`
+- 원격조종(claude.ai Remote Control) 끄기: `claude /config` 에서 Remote Control → false — **사전적용 ON 출고**(수신 포트 없음·아웃바운드 전용). 자체호스팅 대시보드는 별개 기능으로 **기본 OFF**. Codex 끄기: `rm ~/.claude/codex_enabled`. 상태 일괄 확인: `/cockpit-doctor`
 - **이 배포판 통째 삭제**: `wsl --unregister cc-cockpit` — 다른 배포판은 그대로.
 
 ---
@@ -93,11 +93,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-Cockpit-Staged.ps1
 # 컨테이너 런타임(docker/podman) + gzip 필요. 재현성 위해 베이스를 digest 로 핀 고정.
 BASE_IMAGE='ubuntu:24.04@sha256:<digest>' SOURCE_DATE_EPOCH=<epoch> \
   windows/golden/build-rootfs.sh dist/windows
-# 산출: dist/windows/{cockpit-wsl.tar.gz, .sha256, provenance.json}
-# → SHA-256 을 Install-Cockpit.ps1 의 $PinnedSha256 / 웹 다운로드 표에 박고, .ps1 서명 후 게시.
+# 산출: dist/windows/{cockpit-wsl.tar.gz, .sha256, provenance.json} — CI 가 SBOM(SPDX) 추가 생성,
+#        release 에는 manifest.json(핀·URL·미서명 고지)까지 동봉(자산 7종).
+# → SHA-256 을 Install-Cockpit.ps1 의 $PinnedSha256 / manifest / 웹 다운로드 표에 박고 게시(미서명+체크섬 발행).
 ```
 
-`provenance.json` 필드: 베이스 이미지 digest · 플러그인 커밋 · `SOURCE_DATE_EPOCH` · 압축/비압축 SHA-256.
+`provenance.json` 필드: 베이스 이미지 digest · 소스 커밋(`private_source_commit`/`public_marketplace_commit` 분리·베이크 정체성) · `SOURCE_DATE_EPOCH` · 압축/비압축 SHA-256.
 **SBOM·이미지 서명·재현 빌드 로그**는 CI 골든 파이프라인(단계5)에서 첨부한다.
 
 ---

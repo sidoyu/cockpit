@@ -8,15 +8,20 @@ Claude Code **세션 로그 대시보드**(목록·검색·세션 시작/재개)
 > 움직인다는 뜻이고, bypass 가 켜진 환경에선 더더욱 신중해야 한다. GOVERNANCE.md 0·3·4·6장 필독.
 > **개인 PC·비업무·비민감 데이터 전용**(2장). 기본값은 **비활성**이며, 켜는 것은 사용자 책임이다.
 
+> 🔒 **이것은 "로컬 민감 로그 뷰어"다.** claude-logs 에는 프롬프트·파일 경로·업무 내용·PII·키 조각이
+> 섞여 있을 수 있다. 읽기 전용이어도 한 번 열리면 그 화면을 보는 누구나 전부 본다. 따라서
+> **공유 PC·회사 보안정책 적용 기기·화면공유/녹화 중·브라우저 확장(스크린샷·동기화)·검색 인덱싱이
+> 도는 환경에서는 켜지 말 것.** 출고 기본은 OFF 이고, cockpit 은 어떤 자동시작도 굽지 않는다.
+
 ## 구성 요소(이 디렉터리)
 
 | 파일 | 역할 |
 |------|------|
 | `config.example.sh` | 사용자 설정(포트·바인드·타임존·healthcheck·경로). 복사해서 채운다. |
 | `dashboard-run.sh` | 서버 기동 래퍼 — 설정(env)을 적재한 뒤 뷰어 서버를 exec(launchd 가 설정을 받게). |
-| `com.cockpit.dashboard.plist.template` | (macOS) launchd 자동시작 템플릿(`dashboard-run.sh` 실행). `{{...}}` 치환. |
+| `com.cockpit.dashboard.plist.template` | **(macOS 전용)** launchd 자동시작 템플릿(`dashboard-run.sh` 실행). `{{...}}` 치환. Linux/WSL 은 자동시작을 굽지 않음(명시 기동만 — "플랫폼 메모"). |
 | `cron-sweep.template.sh` | 로그→HTML 주기 변환 + (선택) healthcheck ping. 경로·키 파라미터화·이식성 stat. |
-| `disable-remote.sh` | **원격 비활성화** — 포트 LISTEN 서버 중지(cmdline 검증)·launchd 영구 disable·접속 차단 안내(멱등·dry-run 기본). |
+| `disable-remote.sh` | **원격 비활성화** — 포트 LISTEN 서버 중지(cmdline 검증·lsof→ss 폴백)·자동시작 해제((macOS) launchd · (Linux/WSL) systemd --user 유닛)·접속 차단 안내(멱등·dry-run 기본). |
 
 ## 뷰어 본체는 어디에?
 
@@ -42,7 +47,9 @@ Claude Code **세션 로그 대시보드**(목록·검색·세션 시작/재개)
 > ⚠️ **`0.0.0.0` 바인딩의 진실**: 서버는 보통 `0.0.0.0:PORT`(모든 인터페이스)로 바인딩한다
 > (특정 IP 바인딩의 VPN-기동 의존성 함정 회피). 이는 **공개·LAN 인터페이스에서도 LISTEN 한다는 뜻**이다.
 > 외부로부터의 실제 보호는 위 **애플리케이션 allowlist 와 "포트를 공개로 노출하지 않는 것"** 두 가지뿐이다.
-> - **절대 금지**: 라우터 포트포워딩, Tailscale **Funnel/Serve** 공개, 클라우드 방화벽 인바운드 개방.
+> - **절대 금지**: 라우터 포트포워딩, Tailscale **Funnel/Serve** 공개, **(WSL/Windows) `netsh interface
+>   portproxy`** 로 포트 중계, 클라우드 방화벽 인바운드 개방. ⚠ 이들은 모두 뷰어의 IP allowlist(localhost+
+>   VPN 대역)를 **우회**해 공개·LAN 으로 노출시킨다(allowlist 는 요청자 IP 만 보는데, 중계는 IP 를 바꿔버림).
 > - allowlist 가 (오설치·뷰어 버전 차이로) 동작하지 않으면 그 즉시 **인증 없는 공개 HTTP** 가 된다.
 > - HTTPS 미적용은 트래픽이 VPN(WireGuard 등)으로 암호화된다는 전제에 기댄다 — VPN 밖으로 노출하지 말 것.
 
@@ -96,11 +103,28 @@ Claude Code **세션 로그 대시보드**(목록·검색·세션 시작/재개)
 bash plugin/dashboard/disable-remote.sh          # 무엇을 멈출지 미리보기(dry-run)
 bash plugin/dashboard/disable-remote.sh --apply  # 실제 비활성화
 ```
-서버 프로세스 중지 + launchd 자동시작 해제 + 재접속 차단을 수행하고, VPN ACL 해제 안내를 출력한다.
+서버 프로세스 중지(lsof→ss 폴백) + 자동시작 해제((macOS) launchd · (Linux/WSL) systemd --user 유닛이 있으면)
++ 재접속 차단을 수행하고, VPN ACL 해제·(WSL/Windows) `netsh portproxy` 제거 안내를 출력한다.
 재활성화 절차도 함께 안내한다. 자세히는 GOVERNANCE.md 6장.
 
-## ⚠️ 플랫폼 메모
+## ⚠️ 플랫폼 메모 — WSL/Windows(cockpit 의 실제 타깃)
 
-원격 **세션 시작/재개**(다른 기기에서 호스트의 Claude Code 를 띄우는 부분)는 호스트 OS 에 강하게
-의존한다(macOS 는 Terminal 자동화). **Windows/WSL 용 세션 시작 메커니즘은 별도(Windows 빌드 단계)
-에서 정의**한다. 그전까지 WSL 에서는 **읽기 전용 뷰어/검색**만 안전하게 동작한다고 본다.
+cockpit 의 실행 환경은 **WSL2(Linux)**다. 대시보드를 WSL 에서 쓸 때의 정직한 상태:
+
+**✅ 지원(읽기 전용 로컬 뷰어) — v0.1.2 에서 가능한 경로:**
+뷰어를 WSL 안에서 기동하면(`active_server.py` 는 `0.0.0.0:PORT` 로 바인드) **Windows 호스트의 브라우저에서
+`http://localhost:PORT/` 로 열람**할 수 있다(WSL2 의 localhost 포워딩). 기본 NAT 모드의 WSL2 는
+**LAN·다른 기기에서는 추가 설정 없이 도달되지 않는다** — 사실상 호스트 본인만 보는 로컬 뷰어다.
+> ⚠️ 단, 위 "로컬 민감 로그 뷰어" 경고가 그대로 적용된다. **Windows 호스트가 회사 PC·공유 계정·화면공유
+> 중이면 그 브라우저로 세션 로그(PII 가능)가 그대로 열린다.** 그런 환경에서는 켜지 말 것. 자동 브라우저
+> 열기·자동시작은 제공하지 않는다(의도적).
+
+**⏳ 미지원/연기(원격 세션 시작·다른 기기 접속):**
+다른 기기(폰·노트북)에서 Tailscale 등으로 **WSL 안의 포트에 접속**하거나, 다른 기기에서 호스트의 Claude
+Code 세션을 **시작/재개**하는 부분은 호스트 OS·WSL2 NAT 라우팅에 강하게 의존한다(macOS 는 Terminal 자동화).
+**WSL/Windows 용 원격 접속·세션 시작 메커니즘은 실 WSL 라이브 검증 전까지 미지원**으로 둔다(빌드 환경=맥에선
+WSL 네트워킹을 검증할 수 없어 추측 구현 금지). 이 경로를 직접 구성하려면 위 "자가검증(필수)"을 통과한 뒤,
+**allowlist 를 우회하는 중계(serve/funnel/portproxy)는 절대 쓰지 말 것**.
+
+> 요약: v0.1.2 의 WSL 지원 = **호스트 localhost 읽기 전용**. 원격(다른 기기)·세션 시작 = **연기**.
+> `cockpit-doctor` 는 포트 LISTEN 여부와 (Linux 면) systemd --user 자동시작 유닛 유무만 정직 보고한다.

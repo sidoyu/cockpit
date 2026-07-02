@@ -32,6 +32,10 @@ COCKPIT_INSTALL_CC="${COCKPIT_INSTALL_CC:-1}"
 # 첫 실행 안내(MOTD)의 마켓플레이스 소스. 발행 빌드는 실제 URL 을 주입해야 한다
 # (미주입 시 example.invalid 플레이스홀더 → 단계5 CI 게이트가 발행 전 차단).
 COCKPIT_MARKETPLACE="${COCKPIT_MARKETPLACE:-https://example.invalid/cc-companion}"
+# 플러그인 사전설치 베이크(v0.1.2-B)의 설치 정체성 commit — **공개 sidoyu/cockpit 기준 40-hex**(F-1:
+# private HEAD 금지 — 공개 repo 는 clean 재export·fresh history 라 SHA 가 다르다). 비우면 provision 이
+# 베이크를 건너뛰고 첫 실행 2단계 유지(정직 폴백).
+COCKPIT_PLUGIN_COMMIT="${COCKPIT_PLUGIN_COMMIT:-}"
 
 log() { printf '[build-rootfs] %s\n' "$*"; }
 die() { printf '[build-rootfs][FATAL] %s\n' "$*" >&2; exit 1; }
@@ -68,6 +72,17 @@ else
   cp -a "$REPO_ROOT/GOVERNANCE.md" "$STAGE/GOVERNANCE.md"
 fi
 
+# ── 마켓플레이스 트리 스테이징(플러그인 사전설치 베이크 소스) ──────
+# 공개 sidoyu/cockpit 과 동일 content = `git archive --worktree-attributes HEAD`(clean export —
+# .gitattributes export-ignore 로 docs/ 제외 = D 의 공개 재export 와 같은 규칙). .git 은 없음(트리만).
+MKT_STAGE="$WORK/cockpit-marketplace"
+mkdir -p "$MKT_STAGE"
+if git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+  git -C "$REPO_ROOT" archive --worktree-attributes HEAD | tar -x -C "$MKT_STAGE"
+else
+  log "⚠ git repo 아님 — 마켓플레이스 트리 스테이징 불가(플러그인 베이크는 provision 에서 skip 됨)."
+fi
+
 # ── 컨테이너에서 provision 실행 → 파일시스템 export ────────────────
 # CID 는 스크립트 상단에서 정의(트랩 cleanup 이 참조). 여기서 재정의하지 않는다.
 log "베이스 pull: $BASE_IMAGE"
@@ -80,10 +95,13 @@ log "provision 실행(컨테이너 내부)"
   -e COCKPIT_PLUGIN_SRC=/tmp/cockpit-plugin \
   -e COCKPIT_INSTALL_CC="$COCKPIT_INSTALL_CC" \
   -e COCKPIT_MARKETPLACE="$COCKPIT_MARKETPLACE" \
+  -e COCKPIT_MARKETPLACE_SRC=/tmp/cockpit-marketplace \
+  -e COCKPIT_PLUGIN_COMMIT="$COCKPIT_PLUGIN_COMMIT" \
   -e CLAUDE_CODE_VERSION="${CLAUDE_CODE_VERSION:-}" \
   -e SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-}" \
   -v "$HERE:/tmp/provision:ro" \
   -v "$STAGE:/tmp/cockpit-plugin:ro" \
+  -v "$MKT_STAGE:/tmp/cockpit-marketplace:ro" \
   "$BASE_IMAGE" \
   bash -c 'set -e; cp /tmp/provision/provision.sh /root/provision.sh; cp /tmp/provision/wsl.conf /root/wsl.conf; bash /root/provision.sh' \
   || die "provision 실패(컨테이너 로그 확인)"
@@ -118,6 +136,9 @@ cat > "$OUTDIR/provenance.json" <<EOF
   "base_image_digest": "$BASE_DIGEST",
   "base_image_pinned": $BASE_PINNED,
   "plugin_commit": "$PLUGIN_COMMIT",
+  "private_source_commit": "$PLUGIN_COMMIT",
+  "public_marketplace_commit": "${COCKPIT_PLUGIN_COMMIT:-unset}",
+  "plugin_preinstall_baked": $([ -n "$COCKPIT_PLUGIN_COMMIT" ] && echo true || echo false),
   "source_date_epoch": "${SOURCE_DATE_EPOCH:-unset}",
   "sha256_tar_gz": "$GZ_SHA",
   "sha256_tar_uncompressed": "$RAW_SHA",

@@ -12,8 +12,11 @@ export CC_DASH_HOME="${CC_DASH_HOME:-$HOME/claude-logs}"
 
 # ── 서버 ────────────────────────────────────────────────────────
 export CC_DASH_PORT="${CC_DASH_PORT:-18080}"
-# 바인드 주소: 0.0.0.0 유지 권장(특정 IP 바인딩의 VPN-기동 의존성 함정 회피).
-# 실제 접근 통제는 뷰어 서버의 'VPN 대역 + localhost' allowlist 가 담당(README 참조).
+# 바인드 주소(권고값). ⚠ 정직 고지: 공개 뷰어 claude-session-dashboard(d4482d5+)의 active_server.py 는
+# bind 를 **0.0.0.0 로 하드코딩**하며 이 변수를 읽지 않는다(포크하지 않는 한 못 바꾼다). 따라서 실제
+# 접근 통제는 ① 뷰어의 'VPN 대역 + localhost' allowlist ② 포트를 공개로 노출하지 않는 것 ③ WSL2 면 NAT
+# (호스트 localhost 만 도달) 셋이다(README "0.0.0.0 바인딩의 진실"·"플랫폼 메모"). 이 변수는 0.0.0.0 을
+# honor 하는 다른 뷰어를 위한 권고일 뿐이다.
 export CC_DASH_BIND="${CC_DASH_BIND:-0.0.0.0}"
 # 대시보드 표시 타임존(미설정 시 UTC).
 export CC_DASH_TZ="${CC_DASH_TZ:-UTC}"

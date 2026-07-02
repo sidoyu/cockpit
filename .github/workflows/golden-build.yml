@@ -20,6 +20,10 @@ on:
         description: 'claude-code npm 핀 버전(발행 필수 — 미입력 시 latest=floating 이라 publish-gate 차단). 예: 1.2.3'
         required: false
         default: ''
+      plugin_commit:
+        description: '플러그인 사전설치 베이크 정체성 commit(40-hex·공개 sidoyu/cockpit 기준 — private SHA 금지). 미입력 시 베이크 skip=첫 실행 2단계 유지.'
+        required: false
+        default: ''
       syft_version:
         description: 'syft SBOM 도구 핀 버전(선택, best-effort). 예: v1.18.1. 미입력 시 installer 기본.'
         required: false
@@ -55,13 +59,27 @@ jobs:
           IN_MARKETPLACE: ${{ inputs.marketplace_url }}
           IN_CC_VERSION: ${{ inputs.claude_code_version }}
           IN_SYFT_VERSION: ${{ inputs.syft_version }}
+          IN_PLUGIN_COMMIT: ${{ inputs.plugin_commit }}
+          IS_PUBLISH: ${{ inputs.publish == true || startsWith(github.ref, 'refs/tags/') }}
         run: |
           # 입력은 env 로 받아 셸 인라인 보간 회피(Actions injection 완화).
+          # + 입력 위생(Codex): $GITHUB_ENV 는 개행으로 오염 가능 → env-file 에 쓰기 전에 형식 강제.
+          if [ -n "$IN_PLUGIN_COMMIT" ] && ! printf '%s' "$IN_PLUGIN_COMMIT" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "::error::plugin_commit 형식 오류(40-hex 전체 SHA·공개 sidoyu/cockpit 기준): '$IN_PLUGIN_COMMIT'"; exit 1
+          fi
+          if [ -n "$IN_MARKETPLACE" ] && ! printf '%s' "$IN_MARKETPLACE" | grep -qE '^https://[^[:space:][:cntrl:]]+$'; then
+            echo "::error::marketplace_url 형식 오류(https URL 한 줄·공백/제어문자 금지): '$IN_MARKETPLACE'"; exit 1
+          fi
+          # 발행 모드 = 베이크 필수(v0.1.2 결정: B 포함 발행). smoke §6(f) PUBLISH 차단의 조기 게이트.
+          if [ "$IS_PUBLISH" = "true" ] && [ -z "$IN_PLUGIN_COMMIT" ]; then
+            echo "::error::발행(publish) 빌드인데 plugin_commit 미주입 — 플러그인 사전설치 미베이크 이미지 발행 차단."; exit 1
+          fi
           echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
           [ -n "$IN_BASE_IMAGE" ] && echo "BASE_IMAGE=$IN_BASE_IMAGE" >> "$GITHUB_ENV" || true
           [ -n "$IN_MARKETPLACE" ] && echo "COCKPIT_MARKETPLACE=$IN_MARKETPLACE" >> "$GITHUB_ENV" || true
           [ -n "$IN_CC_VERSION" ] && echo "CLAUDE_CODE_VERSION=$IN_CC_VERSION" >> "$GITHUB_ENV" || true
           [ -n "$IN_SYFT_VERSION" ] && echo "SYFT_VERSION=$IN_SYFT_VERSION" >> "$GITHUB_ENV" || true
+          [ -n "$IN_PLUGIN_COMMIT" ] && echo "COCKPIT_PLUGIN_COMMIT=$IN_PLUGIN_COMMIT" >> "$GITHUB_ENV" || true
 
       - name: 발행 트리 secret-scan(PUBLISH·차단)
         run: PUBLISH=1 bash scripts/secret-scan.sh
@@ -84,7 +102,12 @@ jobs:
       - name: 이미지 스모크(smoke-image.sh)
         env:
           IS_PUBLISH: ${{ inputs.publish == true || startsWith(github.ref, 'refs/tags/') }}
+          IN_MARKETPLACE: ${{ inputs.marketplace_url }}
+          IN_PLUGIN_COMMIT: ${{ inputs.plugin_commit }}
         run: |
+          # 베이크 기대값을 smoke §6(f) 에 전달 — 빌드에 넣은 값과 이미지 안 값의 정확 일치 검증.
+          [ -n "$IN_MARKETPLACE" ] && export EXPECT_MARKETPLACE="$IN_MARKETPLACE" || true
+          [ -n "$IN_PLUGIN_COMMIT" ] && export EXPECT_PLUGIN_COMMIT="$IN_PLUGIN_COMMIT" || true
           if [ "$IS_PUBLISH" = "true" ]; then PUBLISH=1 bash scripts/smoke-image.sh dist/windows/cockpit-wsl.tar.gz
           else bash scripts/smoke-image.sh dist/windows/cockpit-wsl.tar.gz; fi
 

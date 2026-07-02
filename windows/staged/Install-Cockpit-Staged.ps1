@@ -58,6 +58,9 @@ function New-CockpitLauncher {
   $cockpitDir = Join-Path $env:LOCALAPPDATA 'Cockpit'
   if (-not (Test-Path $cockpitDir)) { New-Item -ItemType Directory -Path $cockpitDir -Force | Out-Null }
   $cmdPath = Join-Path $cockpitDir 'Launch-Cockpit.cmd'
+  # golden 부트스트랩과 동일: 현재 콘솔 직접 실행 + 실패 시 pause(옛 wt.exe detached 분기는 즉시
+  # exit0 라 실패를 숨겨 제거 — 발견3). 배포판명 **무인용**(cmd→wsl 따옴표 미탈피 라이브 실측·이름은
+  # 엄격 검증돼 공백 불가) + %errorlevel% neq 0(wsl 음수 종료코드도 포착 — 라이브 실측).
   $launch = '~/.cockpit/launch.sh'
   $cmdLines = @(
     '@echo off',
@@ -65,13 +68,11 @@ function New-CockpitLauncher {
     'setlocal',
     'set "WSL=wsl.exe"',
     'where %WSL% >nul 2>nul || set "WSL=%WINDIR%\Sysnative\wsl.exe"',
-    ('where wt.exe >nul 2>nul && ( start "" wt.exe %WSL% -d ' + $Distro + ' bash -lc "' + $launch + '" ) || (' ),
-    ('  %WSL% -d ' + $Distro + ' bash -lc "' + $launch + '"'),
-    '  if errorlevel 1 (',
-    '    echo.',
-    '    echo [cockpit] Launch failed - check WSL/distro state:  wsl -l -v',
-    '    pause',
-    '  )',
+    ('%WSL% -d ' + $Distro + ' bash -lc "' + $launch + '"'),
+    'if %errorlevel% neq 0 (',
+    '  echo(',
+    '  echo [cockpit] Launch failed - check WSL/distro state:  wsl -l -v',
+    '  pause',
     ')',
     'endlocal'
   )
@@ -96,8 +97,8 @@ function New-CockpitLauncher {
 Info "스테이지드 설치 시작 (배포판: $DistroName)"
 
 # ── 배포판 이름 안전 ──────────────────────────────────────────────────────
-if ($DistroName -cnotmatch '^cc-' -and -not $AllowCustomDistroName) {
-  Die "배포판 이름은 소문자 'cc-' 로 시작해야 합니다(기존 배포판 오접촉 방지). 임의 이름은 -AllowCustomDistroName(고위험)."
+if ($DistroName -cnotmatch '^cc-[A-Za-z0-9._-]+$' -and -not $AllowCustomDistroName) {
+  Die "배포판 이름은 소문자 'cc-' 로 시작하고 뒤에 1자 이상이어야 합니다('cc-' 단독 불가; 기존 배포판 오접촉 방지). 임의 이름은 -AllowCustomDistroName(고위험)."
 }
 
 # ── 0) 입력 점검 ──────────────────────────────────────────────────────────
@@ -199,9 +200,10 @@ if ($LauncherCmd) {
 } else {
   Write-Host "  • 진입:  wsl -d $DistroName"
 }
-Write-Host "  1) claude 로그인(최초 1회). 이후 바로 사용."
-Write-Host "  2) /plugin marketplace add $MarketplaceUrl"
-Write-Host "  3) /plugin install cockpit@cc-companion"
-Write-Host "  4) /cockpit-setup     # 거버넌스 동의 한 화면 + (원하면) 기억 외부송신 켜기"
+Write-Host "  1) claude 로그인(최초 1회): 실행 후 /login"
+Write-Host "  2) 로그인 후 claude 재시작 → claude.ai/code 원격조종 활성(최초 실행은 미로그인이라 원격이 조용히 꺼져 있음)."
+Write-Host "  3) /plugin marketplace add $MarketplaceUrl"
+Write-Host "  4) /plugin install cockpit@cc-companion"
+Write-Host "  5) /cockpit-setup     # 거버넌스 동의 한 화면 + (원하면) 기억 외부송신 켜기"
 Write-Host ""
 Write-Host "통째 삭제:  wsl --unregister $DistroName   # 다른 배포판은 안 건드림" -ForegroundColor Cyan

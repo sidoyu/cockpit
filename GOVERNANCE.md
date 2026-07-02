@@ -99,8 +99,8 @@
 - **보조 검토(OpenAI 송출) 끄기**: 스위치 파일을 삭제한다(`rm ~/.claude/codex_enabled`). 그러면 어떤 트리거에도 OpenAI로 호출하지 않는다.
 - **원격 제어 끄기**: 원격 대시보드(다른 기기에서 호스트 조종)는 **선택 기능이며 기본 비활성**이다. 켜져 있다면 다음으로 끈다.
   - **미리보기(무엇을 멈출지)**: `bash plugin/dashboard/disable-remote.sh` (**설치된 플러그인 폴더에서 실행** — 경로가 안 맞으면 `cockpit-doctor` 가 안내하는 절대경로를 쓴다)
-  - **실제 비활성화**: `bash plugin/dashboard/disable-remote.sh --apply` — 서버 프로세스 중지 + (macOS) launchd 자동시작 해제 + 포트 닫힘 확인 + VPN(Tailscale 등) 접근 차단·재활성화 안내를 수행한다(멱등).
-  - **상태 확인**: `cockpit-doctor`(= `setup.py doctor`)가 "원격 대시보드 ON/OFF"(자동시작 등록 여부 + 포트 LISTEN 여부)를 탐지해 보고한다.
+  - **실제 비활성화**: `bash plugin/dashboard/disable-remote.sh --apply` — 서버 프로세스 중지(포트 탐지 lsof→ss 폴백) + 자동시작 해제((macOS) launchd · (Linux/WSL) systemd --user 유닛이 있으면) + 포트 닫힘 확인 + VPN(Tailscale 등) 접근 차단·(WSL/Windows) `netsh portproxy` 중계 제거·재활성화 안내를 수행한다(멱등).
+  - **상태 확인**: `cockpit-doctor`(= `setup.py doctor`)가 "원격 대시보드 ON/OFF"를 **OS별 정직 탐지**(자동시작: macOS=launchd·Linux/WSL=systemd --user 유닛 + 포트 LISTEN 여부)해 보고한다. WSL 에서 포트가 열려 있으면 Windows 호스트 localhost 노출 경고도 함께 낸다.
   - **접근 경계**: 켜져 있어도 대시보드는 **localhost + 개인 VPN 대역(기본 Tailscale `100.64.0.0/10`)만 허용**하고 나머지는 거부하는 것을 목표로 한다(공개망·LAN 직접 접속 차단). **단 이 차단은 뷰어가 allowlist 를 구현했을 때만 성립**하며(4장 ※3), 공개 뷰어 `d4482d5`(2026-06-23) 이상에 반영돼 있다(이전·오설치 버전엔 없을 수 있음) → **버전과 무관하게 원격을 켜기 전 자가검증(같은 LAN·VPN 끈 기기에서 `403` 확인) 필수**. 공개망 노출 구성으로 바꾸지 말 것. 상세: `plugin/dashboard/README.md`.
 - **긴급 정지(kill switch)**: 긴급정지 파일을 생성한다(예: `touch ~/.claude/CC_KILL_SWITCH`) → 자동 진행이 즉시 멈춘다.
 - **전체 제거(uninstall)**: 플러그인 제거(`/plugin uninstall ...`) + 마법사가 설치한 설정/파일 되돌리기(마법사의 롤백 안내 사용). 메모리·로그는 사용자가 직접 삭제할 수 있다.

@@ -82,6 +82,54 @@ def _conf_value(path, key):
     return None
 
 
+def _is_wsl():
+    """WSL(Windows Subsystem for Linux) 환경인지 — 메시지 분기용(읽기전용)."""
+    if os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"):
+        return True
+    try:
+        with open("/proc/sys/kernel/osrelease", encoding="utf-8") as f:
+            return "microsoft" in f.read().lower()
+    except OSError:
+        return False
+
+
+def _unit_matches(name):
+    low = name.lower()
+    return low.endswith((".service", ".timer")) and "cockpit" in low and ("dash" in low or "remote" in low)
+
+
+def _dash_autostart():
+    """원격 대시보드 자동시작 등록 여부 + 메커니즘을 **OS별**로 탐지(읽기전용).
+    macOS=launchd plist, Linux/WSL=systemd --user 유닛(systemctl 우선·디렉터리 폴백). 반환 (bool, 설명문자열).
+    ⚠ WSL 에선 macOS plist 경로(~/Library/LaunchAgents)가 영영 없으므로 그것만 보면 거짓 OFF 가 된다.
+    ⚠ systemd/launchd '유닛' 자동시작만 본다 — cron·.bashrc 류 자동기동은 포트 LISTEN 으로 잡힌다(런타임 신호).
+    cockpit 은 기본적으로 어떤 자동시작 단위도 굽지 않으므로 정상 출고 상태에선 (False, '유닛 미등록')."""
+    if sys.platform == "darwin":
+        plist = os.path.join(HOME, "Library", "LaunchAgents", "com.cockpit.dashboard.plist")
+        return (True, "launchd(plist 등록)") if os.path.exists(plist) else (False, "유닛 미등록")
+    # Linux/WSL: systemctl --user 우선(모든 unit 경로 포괄), 실패 시 ~/.config/systemd/user 디렉터리 폴백.
+    try:
+        p = subprocess.run(["systemctl", "--user", "list-unit-files", "--no-legend"],
+                           capture_output=True, text=True, timeout=5)
+        if p.returncode == 0:
+            for line in p.stdout.splitlines():
+                parts = line.split()
+                if parts and _unit_matches(parts[0]):
+                    return True, "systemd --user(%s)" % parts[0]
+            return False, "유닛 미등록"   # systemctl 권위 — 폴백 불필요
+    except Exception:
+        pass
+    udir = os.path.expanduser("~/.config/systemd/user")
+    try:
+        if os.path.isdir(udir):
+            for name in os.listdir(udir):
+                if _unit_matches(name):
+                    return True, "systemd --user(%s)" % name
+    except OSError:
+        pass
+    return False, "유닛 미등록"
+
+
 # ───────────────────────── doctor ─────────────────────────
 def doctor():
     print("[cockpit doctor] 환경·충돌 점검 (읽기 전용)\n")
@@ -154,8 +202,9 @@ def doctor():
     else:
         _p(INFO, "보조 검토(Codex) 비활성(스위치 없음). 켜기: touch '%s'" % codex_switch)
 
-    # 원격 대시보드 — ON/OFF 탐지(선택 기능, 기본 비활성; GOVERNANCE 6장)
-    dash_plist = os.path.join(HOME, "Library", "LaunchAgents", "com.cockpit.dashboard.plist")
+    # 원격 대시보드 — ON/OFF 탐지(선택 기능·기본 비활성·이 패키지에서 가장 위험; GOVERNANCE 6장).
+    # 자동시작 탐지는 OS별(_dash_autostart): macOS=launchd plist, Linux/WSL=systemd --user 유닛.
+    # (포트 LISTEN 탐지는 socket 이라 크로스플랫폼 — 실제 가동 여부의 1차 신호.)
     dash_conf = os.path.expanduser("~/.config/cockpit/dashboard.env")
     # 포트: 환경변수 → 설정파일(CC_DASH_PORT) → 기본 18080 순.
     port_src = os.environ.get("CC_DASH_PORT") or (os.path.exists(dash_conf) and _conf_value(dash_conf, "CC_DASH_PORT")) or "18080"
@@ -163,13 +212,22 @@ def doctor():
         dash_port = int(port_src)
     except (ValueError, TypeError):
         dash_port = 18080
-    autostart = os.path.exists(dash_plist)
+    autostart, auto_mech = _dash_autostart()
     listening = _port_listening(dash_port)
     if autostart or listening:
         _p(WARN, "원격 대시보드 ON — 자동시작=%s · 포트 %d=%s. 끄기: dashboard/disable-remote.sh --apply (GOVERNANCE 6장)"
-           % ("등록됨" if autostart else "미등록", dash_port, "LISTEN" if listening else "닫힘"))
+           % (auto_mech if autostart else "유닛 미등록", dash_port, "LISTEN" if listening else "닫힘"))
+        if listening:
+            # 세션 로그(PII 가능)가 브라우저로 열릴 수 있는 노출 경고. WSL 이면 Windows 호스트 localhost 경로를 명시.
+            if _is_wsl():
+                # WSL2 는 NAT 라 0.0.0.0 바인드라도 기본은 Windows 호스트 localhost 에서 도달(LAN/폰은 추가설정 없이 미도달).
+                _p(WARN, "  ↳ 포트 %d LISTEN: WSL 에선 Windows 호스트 localhost:%d 로 세션 로그(민감) 열람 가능. "
+                         "공유·회사 PC·화면공유 중 주의 · tailscale serve/funnel·netsh portproxy 로 공개 노출 금지." % (dash_port, dash_port))
+            else:
+                _p(WARN, "  ↳ 포트 %d LISTEN: localhost/허용 네트워크에서 세션 로그(민감) 열람 가능. "
+                         "공유·화면공유 중 주의 · tailscale serve/funnel 등으로 공개 노출 금지." % dash_port)
     else:
-        _p(OK, "원격 대시보드 OFF(자동시작 미등록·포트 %d 미개방). 설정 파일: %s"
+        _p(OK, "원격 대시보드 OFF(systemd/launchd 자동시작 유닛 미등록·포트 %d 미개방). 설정 파일: %s"
            % (dash_port, "있음" if os.path.exists(dash_conf) else "없음"))
 
     print("\n결과: %s" % ("문제 %d건 — 위 ✗ 확인" % issues if issues else "치명 문제 없음. install 진행 가능."))
@@ -331,8 +389,17 @@ def install(apply, enable_bypass, accepted=False, replace_claude_md=False, enabl
         print("  되돌리려면:  python3 '%s' rollback --latest" % os.path.realpath(__file__))
         print("  다음: ~/.claude/CLAUDE.md 의 {{...}} 플레이스홀더를 본인 환경으로 채우세요.")
     else:
-        print("\n[dry-run] 위 작업을 실제로 하려면:  python3 setup.py install --apply"
-              + ("  (+ --enable-bypass)" if enable_bypass else ""))
+        # 재실행 안내 = 이번 dry-run 에 **실제로 지정한 플래그를 그대로** 재구성한다.
+        # (옛 코드는 --enable-bypass 만 덧붙여, --enable-memory-egress/--i-accept-governance
+        #  를 준 dry-run 과 apply 명령이 어긋났다 — 동의·egress 가 조용히 빠지는 부정합.)
+        flags = []
+        if enable_bypass:     flags.append("--enable-bypass")
+        if enable_egress:     flags.append("--enable-memory-egress")
+        if accepted:          flags.append("--i-accept-governance")
+        if replace_claude_md: flags.append("--replace-claude-md")
+        suffix = "".join(" " + f for f in flags)
+        print("\n[dry-run] 위 작업을 실제로 적용하려면(이번에 지정한 플래그 그대로):"
+              "\n  python3 setup.py install --apply" + suffix)
     return 0
 
 

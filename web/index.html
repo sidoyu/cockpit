@@ -123,14 +123,12 @@ wsl --update</code></pre>
           <p class="muted">골든 이미지 다운로드가 실패하거나 구형 환경이면 <strong>스테이지드 폴백</strong>(<code>Install-Cockpit-Staged.ps1</code>)을 씁니다 — 공식 베이스 rootfs를 검증해 import 후 라이브 프로비저닝. 통째 삭제는 <code>wsl --unregister cc-cockpit</code>.</p>
         </li>
         <li>
-          <p><strong>3) WSL(cc-cockpit) 안에서</strong> Claude Code 로그인 후 cockpit 플러그인 설치:</p>
+          <p><strong>3) WSL(cc-cockpit) 안에서</strong> — 플러그인은 <strong>미리 설치</strong>돼 있어 실행할 셸 명령은 이것 하나입니다:</p>
           <div class="code" data-gated>
             <button class="copy" type="button" aria-label="복사">복사</button>
-<pre><code>claude
-/plugin marketplace add https://github.com/sidoyu/cockpit
-/plugin install cockpit@cc-companion
-/cockpit-setup</code></pre>
+<pre><code>claude</code></pre>
           </div>
+          <p class="muted">이후는 <strong>Claude 화면 안에서 입력</strong>합니다(셸에 붙여넣지 마세요): ① <code>/login</code> → 브라우저 OAuth 로그인(최초 1회) ② <code>/exit</code> 후 <code>claude</code> 재실행 — <strong>로그인 후 한 번 재시작해야 claude.ai/code 원격조종이 활성</strong>됩니다 ③ <code>/cockpit-setup</code> → 거버넌스 동의 한 화면. 구 이미지(v0.1.1 이하)는 ③ 전에 <code>/plugin marketplace add https://github.com/sidoyu/cockpit</code> → <code>/plugin install cockpit@cc-companion</code> 을 먼저 입력하세요.</p>
         </li>
       </ol>
     </div>
@@ -200,10 +198,10 @@ bash plugin/dashboard/disable-remote.sh --apply</code></pre></div>
     <table class="dl">
       <thead><tr><th>산출물</th><th>대상</th><th>링크</th><th>SHA-256 / 서명</th></tr></thead>
       <tbody>
-        <tr><td>WSL2 배포판 이미지</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.1/cockpit-wsl.tar.gz" rel="nofollow">cockpit-wsl.tar.gz</a></td><td><code class="cksum">SHA-256: d43ab033b08b6322ba596c75d2b2036109fdf2523a06b29dc575d0db1506ed65<br>(부트스트랩이 import 전 자동 대조)</code></td></tr>
-        <tr><td>PowerShell 부트스트랩</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.1/Install-Cockpit.ps1" rel="nofollow">Install-Cockpit.ps1</a></td><td><code class="cksum">SHA-256: 53cd789623b50e27f67f28e7028e0ac03dfe0fbd14ea8672a63c9b760252f781<br>(서명 없음 — Get-FileHash 로 대조)</code></td></tr>
-        <tr><td>부트스트랩(스테이지드 폴백)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.1/Install-Cockpit-Staged.ps1" rel="nofollow">Install-Cockpit-Staged.ps1</a></td><td><code class="cksum">SHA-256: d38a6fc7b5fd9072af99981ee5f7464fb8a3737c029ff8c4c937a29ca3f8a9c0<br>(서명 없음)</code></td></tr>
-        <tr><td>이미지 출처(provenance)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.1/provenance.json" rel="nofollow">provenance.json</a></td><td><code class="cksum">— 베이스 digest·SBOM·빌드로그</code></td></tr>
+        <tr><td>WSL2 배포판 이미지</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.2/cockpit-wsl.tar.gz" rel="nofollow">cockpit-wsl.tar.gz</a></td><td><code class="cksum">SHA-256: 9b5cc736e52ad37fb731fb9723d829750b558ecf256df7ae9b232606c00a740b<br>(부트스트랩이 import 전 자동 대조)</code></td></tr>
+        <tr><td>PowerShell 부트스트랩</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.2/Install-Cockpit.ps1" rel="nofollow">Install-Cockpit.ps1</a></td><td><code class="cksum">SHA-256: 44076034278a30affe25c5aafcf8daaa3fb6895c01fd5a213972e3937ade61a2<br>(서명 없음 — Get-FileHash 로 대조)</code></td></tr>
+        <tr><td>부트스트랩(스테이지드 폴백)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.2/Install-Cockpit-Staged.ps1" rel="nofollow">Install-Cockpit-Staged.ps1</a></td><td><code class="cksum">SHA-256: 4621afeef964b5f3f52017d2c2c0fdfcd70333df4e7f2deaa55deb522a8882fc<br>(서명 없음)</code></td></tr>
+        <tr><td>이미지 출처(provenance)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.2/provenance.json" rel="nofollow">provenance.json</a></td><td><code class="cksum">— 베이스 digest·SBOM·빌드로그</code></td></tr>
         <tr><td>플러그인(행동층)</td><td>공통</td><td><a href="https://github.com/sidoyu/cockpit" rel="nofollow">cockpit@cc-companion</a></td><td><code class="cksum">— (마켓플레이스)</code></td></tr>
       </tbody>
     </table>
@@ -245,7 +243,7 @@ bash plugin/dashboard/disable-remote.sh --apply</code></pre></div>
 
 <footer class="site-footer">
   <div class="wrap">
-    <p>cc-companion · cockpit <span id="ver">v0.1.1</span> · 개인 학습용 도구(회사 공식 IT 배포물 아님).</p>
+    <p>cc-companion · cockpit <span id="ver">v0.1.2</span> · 개인 학습용 도구(회사 공식 IT 배포물 아님).</p>
     <p class="links">
       <a href="../GOVERNANCE.md">거버넌스</a> ·
       <a href="../README.md">패키지 README</a> ·

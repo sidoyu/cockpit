@@ -26,15 +26,15 @@
 
 ## 릴리스 치환 참조 (배포자용)
 
-v0.1.1 발행 — 명령·링크는 실제 값으로 치환됨. 다음 릴리스 시 갱신 항목:
+v0.1.2 발행 — 명령·링크는 실제 값으로 치환됨. 다음 릴리스 시 갱신 항목:
 
 - [x] 마켓플레이스/릴리스 URL → `github.com/sidoyu/cockpit` 로 치환.
-- [ ] Windows `Install-Cockpit.ps1`(+ 스테이지드 `Install-Cockpit-Staged.ps1`) / `cockpit-wsl.tar.gz` / `provenance.json` 링크 + **SHA-256 체크섬** 채우기(이 빌드는 코드서명 없음 — 무결성은 체크섬 대조로만 보장, Authenticode 서명층 없음). 이미지 SHA-256 은 `Install-Cockpit.ps1` 의 `$PinnedSha256` 에도 박는다.
-- [ ] 다운로드 표의 `—（배포 시）` 체크섬 칸 채우기.
+- [x] Windows `Install-Cockpit.ps1`(+ 스테이지드 `Install-Cockpit-Staged.ps1`) / `cockpit-wsl.tar.gz` / `provenance.json` 링크 + **SHA-256 체크섬** 채우기(이 빌드는 코드서명 없음 — 무결성은 체크섬 대조로만 보장, Authenticode 서명층 없음). 이미지 SHA-256 은 `Install-Cockpit.ps1` 의 `$PinnedSha256` 에도 박는다. **릴리스마다 재계산 필수.**
+- [x] 다운로드 표 체크섬 칸 채우기(릴리스마다 재계산).
 - [ ] 데모 영상/GIF placeholder(`#demo-ph`) → 실제 미디어 삽입.
-- [ ] `<a href="../GOVERNANCE.md">` 등 상대 링크가 배포 사이트 구조에서 유효한지 확인(같은 repo를 통째로 호스팅하면 그대로 동작; 별도 호스팅이면 절대 URL로).
-- [ ] 푸터 버전(`#ver`)이 `marketplace.json`/`plugin.json` 버전과 일치하는지.
-- [ ] 발행 정책 결정 반영: 원격 기본값(현재 OFF·opt-in) 문구 · 뷰어 버전 핀.
+- [x] `<a href="../GOVERNANCE.md">` 등 상대 링크가 배포 사이트 구조에서 유효한지 확인(같은 repo를 통째로 호스팅하면 그대로 동작; 별도 호스팅이면 절대 URL로).
+- [x] 푸터 버전(`#ver`)이 `marketplace.json`/`plugin.json` 버전과 일치하는지(릴리스마다 확인).
+- [x] 발행 정책 문구: **자체호스팅 대시보드=기본 OFF(opt-in)** · 원격조종(claude.ai Remote Control)=사전적용 ON — 두 용어를 혼용하지 말 것.
 
 ## 알려진 의존성 (다른 단계가 채움)
 

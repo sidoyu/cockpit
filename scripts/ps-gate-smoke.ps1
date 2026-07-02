@@ -88,6 +88,40 @@ foreach ($t in ($targets | Select-Object -Unique)) {
   }
 }
 
+# ── 3) 런처(.cmd) 안전 불변식(정적 소스 검사) ──
+# WSL 미설치 러너에서도 도는 정적 검사. 발견3: 런처가 실패를 숨기지 않는지(detached wt.exe 분기
+# 부재 + errorlevel→pause 가드). 발견5: 배포판명 strict allowlist. (b)(c)는 2026-07-02 라이브
+# 실측으로 재정의 — 상세 각 항목 주석.
+Info "3) 런처(.cmd) 안전 불변식(정적)"
+$launcherFiles = @($ps1)
+$stg = Join-Path (Split-Path $BootstrapDir -Parent) 'staged\Install-Cockpit-Staged.ps1'
+if (Test-Path $stg) { $launcherFiles += $stg }
+foreach ($lf in $launcherFiles) {
+  $name = Split-Path $lf -Leaf
+  $src  = Get-Content -Raw $lf
+  # (a) detached wt.exe 분기 부재(즉시 exit0 → 실패 숨김 회귀가드)
+  if ($src -match 'start\s+""\s+wt') {
+    $fail = 1; Err "${name}: detached 'start ”” wt' 분기 잔존 — WSL/claude 실패를 숨길 수 있음(발견3 회귀)."
+  } else { Ok "${name}: detached wt.exe 분기 없음(실패 가시성 우회 차단)" }
+  # (b) 실패 가시성: %errorlevel% neq 0 가드 + pause 배열요소. `if errorlevel 1` 은 wsl.exe 의
+  #     음수(-1) 종료코드를 못 잡아 창이 소리 없이 닫힘(라이브 실측 2026-07-02) — 잔존 자체가 회귀.
+  if (($src.Contains('if %errorlevel% neq 0 (')) -and ($src -match "'\s+pause'")) {
+    Ok "${name}: 실패 시 %errorlevel% neq 0 → pause 가드 존재"
+  } else { $fail = 1; Err "${name}: %errorlevel% neq 0 → pause 가드 누락(발견3·음수코드 라이브 실측)." }
+  if ($src.Contains('if errorlevel 1 (')) {
+    $fail = 1; Err "${name}: 'if errorlevel 1' 잔존 — wsl 음수 종료코드 미포착(라이브 실측 회귀)."
+  } else { Ok "${name}: 음수-미포착 형태('if errorlevel 1') 없음" }
+  # (c) .cmd 배포판명 **무인용**(라이브 실측 2026-07-02: cmd 경유 wsl.exe 가 -d "이름" 의 따옴표를
+  #     벗기지 않아 WSL_E_DISTRO_NOT_FOUND — 인용이 곧 버그. 이름은 (d) strict allowlist 로 공백
+  #     불가라 무인용이 안전. 옛 (c)'인용 필수' 검사를 정반대로 재정의).
+  if ($src.Contains('%WSL% -d "')) {
+    $fail = 1; Err "${name}: .cmd 배포판명 인용 잔존 — cmd→wsl 따옴표 미탈피로 실행 불가(라이브 실측 회귀)."
+  } else { Ok "${name}: .cmd 배포판명 무인용(cmd→wsl 실측 정합)" }
+  # (d) 배포판명 strict allowlist(발견5)
+  if ($src.Contains('^cc-[A-Za-z0-9._-]+$')) { Ok "${name}: 배포판명 strict allowlist 적용" }
+  else { $fail = 1; Err "${name}: 배포판명 allowlist 강화(^cc-[A-Za-z0-9._-]+`$) 누락(발견5)." }
+}
+
 Write-Host ""
-if ($fail -eq 0) { Info "OK — 안전 게이트 발화 + 서명 점검 통과."; exit 0 }
+if ($fail -eq 0) { Info "OK — 안전 게이트 발화 + 서명 점검 + 런처 불변식 통과."; exit 0 }
 else { Err "실패 — 위 항목 확인."; exit 1 }

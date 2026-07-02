@@ -51,8 +51,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ── 게시 시 치환되는 핀 고정값(빌드/릴리스 파이프라인이 채움) ──────────────
-$PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.1/cockpit-wsl.tar.gz'
-$PinnedSha256   = 'd43ab033b08b6322ba596c75d2b2036109fdf2523a06b29dc575d0db1506ed65'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
+$PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.2/cockpit-wsl.tar.gz'
+$PinnedSha256   = '9b5cc736e52ad37fb731fb9723d829750b558ecf256df7ae9b232606c00a740b'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
 $MarketplaceUrl = 'https://github.com/sidoyu/cockpit'                                  # /plugin marketplace add 실주소(게시자 sidoyu·cc-companion).
 $PLACEHOLDER_HOSTS = @('example.invalid')
 
@@ -63,8 +63,8 @@ function Die ($m){ Write-Host "[cockpit][FATAL] $m" -ForegroundColor Red; exit 1
 Info "cockpit WSL2 부트스트랩 시작 (배포판: $DistroName)"
 
 # ── 배포판 이름 안전(기존 배포판 오접촉 방지) ─────────────────────────────
-if ($DistroName -cnotmatch '^cc-' -and -not $AllowCustomDistroName) {
-  Die "안전을 위해 배포판 이름은 소문자 'cc-' 로 시작해야 합니다(기본 cc-cockpit). 기존 배포판(예: Ubuntu) 오접촉 방지. 임의 이름이 꼭 필요하면 -AllowCustomDistroName 을 명시(고위험)."
+if ($DistroName -cnotmatch '^cc-[A-Za-z0-9._-]+$' -and -not $AllowCustomDistroName) {
+  Die "안전을 위해 배포판 이름은 소문자 'cc-' 로 시작하고 뒤에 1자 이상이어야 합니다(기본 cc-cockpit; 'cc-' 단독 불가). 기존 배포판(예: Ubuntu) 오접촉 방지. 임의 이름이 꼭 필요하면 -AllowCustomDistroName 을 명시(고위험)."
 }
 
 # ── 0) TLS 1.2+ 강제(구버전 PowerShell 기본이 취약) ───────────────────────
@@ -214,8 +214,15 @@ function New-CockpitLauncher {
   if (-not (Test-Path $cockpitDir)) { New-Item -ItemType Directory -Path $cockpitDir -Force | Out-Null }
   $cmdPath = Join-Path $cockpitDir 'Launch-Cockpit.cmd'
 
-  # 래퍼 .cmd: ① wsl.exe 경로 확정(32비트 부모 대비 Sysnative 폴백) ② Windows Terminal 있으면 WT
-  #            ③ 없으면 콘솔 직접 — 시작 실패 시 창 유지(pause). launch.sh 가 claude 종료코드 처리.
+  # 래퍼 .cmd: ① wsl.exe 경로 확정(32비트 부모 대비 Sysnative 폴백) ② **현재 콘솔에서 직접 실행** →
+  #   종료코드를 .cmd 가 받아 실패 시 창 유지(pause). 비개발자가 실패 원인을 본다.
+  #   (옛 wt.exe detached 분기는 즉시 exit0 라 WSL/claude 실패를 숨겨 제거 — 발견3. Win11 은 기본
+  #    터미널이 WT 라 자동 호스팅, Win10 은 conhost; 어느 쪽이든 pause 동작.) launch.sh 가 claude 종료 처리.
+  #   배포판명은 **따옴표 없이**(라이브 실측 2026-07-02: cmd.exe 경유 시 이 PC들의 wsl.exe 가
+  #   -d "이름" 의 따옴표를 벗기지 않고 이름의 일부로 취급 → WSL_E_DISTRO_NOT_FOUND. PowerShell 은
+  #   따옴표를 미리 벗겨 재현 안 됨. 이름은 ^cc-[A-Za-z0-9._-]+$ 검증(공백 불가)이라 무인용이 안전).
+  #   실패 가드도 `if errorlevel 1` 이 아니라 %errorlevel% neq 0 — wsl.exe 는 이런 오류에 **음수(-1)**
+  #   종료코드를 내는데 errorlevel 1 은 음수를 못 잡아 창이 소리 없이 닫혔다(라이브 실측).
   $launch = '~/.cockpit/launch.sh'
   $cmdLines = @(
     '@echo off',
@@ -223,13 +230,11 @@ function New-CockpitLauncher {
     'setlocal',
     'set "WSL=wsl.exe"',
     'where %WSL% >nul 2>nul || set "WSL=%WINDIR%\Sysnative\wsl.exe"',
-    ('where wt.exe >nul 2>nul && ( start "" wt.exe %WSL% -d ' + $Distro + ' bash -lc "' + $launch + '" ) || (' ),
-    ('  %WSL% -d ' + $Distro + ' bash -lc "' + $launch + '"'),
-    '  if errorlevel 1 (',
-    '    echo.',
-    '    echo [cockpit] Launch failed - check WSL/distro state:  wsl -l -v',
-    '    pause',
-    '  )',
+    ('%WSL% -d ' + $Distro + ' bash -lc "' + $launch + '"'),
+    'if %errorlevel% neq 0 (',
+    '  echo(',
+    '  echo [cockpit] Launch failed - check WSL/distro state:  wsl -l -v',
+    '  pause',
     ')',
     'endlocal'
   )
@@ -278,12 +283,10 @@ if ($LauncherCmd) {
 } else {
   Write-Host "  • 진입:  wsl -d $DistroName"
 }
-Write-Host "  1) claude 로그인(최초 1회, 브라우저 OAuth). 이후 바로 사용."
-Write-Host ""
-Write-Host "  플러그인(아직 사전설치 전 — 최초 1회만):" -ForegroundColor Green
-Write-Host "  2) /plugin marketplace add $MarketplaceUrl"
-Write-Host "  3) /plugin install cockpit@cc-companion"
-Write-Host "  4) /cockpit-setup     # 거버넌스 동의 한 화면 + (원하면) 기억 외부송신 켜기"
+Write-Host "  1) claude 로그인(최초 1회, 브라우저 OAuth): 실행 후 /login"
+Write-Host "  2) 로그인 후 claude 재시작 → claude.ai/code 원격조종 활성(최초 실행은 미로그인이라 원격이 조용히 꺼져 있음)."
+Write-Host "  3) 홈의 README-first-run.txt 를 따르세요 — 플러그인 단계는 이미지가 정확히 안내합니다"
+Write-Host "     (v0.1.2+ 사전설치 이미지는 /cockpit-setup 하나, 구 이미지는 /plugin marketplace add $MarketplaceUrl 부터)."
 Write-Host ""
 Write-Host "통째 삭제(되돌리기):  wsl --unregister $DistroName   # 다른 배포판은 안 건드림" -ForegroundColor Cyan
 Write-Host ""
