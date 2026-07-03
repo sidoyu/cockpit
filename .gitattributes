@@ -12,3 +12,6 @@ docs/** export-ignore
 # 줄끝 정규화: 셸 스크립트는 반드시 LF(WSL/bash 에서 CRLF 면 깨짐). autocrlf 환경 방어.
 # (PowerShell 은 LF/CRLF 모두 동작 + 서명 후 줄끝 변경 churn 회피 위해 규칙 두지 않음.)
 *.sh text eol=lf
+
+# Windows 배치 파일은 CRLF 고정(.cmd 를 LF 로 체크아웃하면 일부 파서 경로가 깨진다).
+*.cmd text eol=crlf

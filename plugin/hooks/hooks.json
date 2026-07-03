@@ -9,6 +9,26 @@
             "timeout": 8
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/chain-session/watcher_launch.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/chain-session/chain_nudge.py\"",
+            "timeout": 6
+          }
+        ]
       }
     ],
     "PreToolUse": [

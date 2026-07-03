@@ -12,8 +12,8 @@
 #   • 개인정보·키·계정·사내 식별자 **0건**. 어떤 비밀도 이미지에 굽지 않는다.
 #   • v0.1.1 부터: 편의 설정은 사전적용(bypass·effort·model·remote-control·trust)하되,
 #     **외부 송신(egress) 동의만은 첫 실행 게이트로 남긴다**(동의 무결성). 즉 이미지에 절대
-#     굽지 않는 것: ① egress 동의 마커(STATE_DIR/setup_complete) ② Codex 스위치(codex_enabled)
-#     ③ 원격 대시보드(자체호스팅 뷰어) 자동시작 ④ 어떤 비밀/자격증명.
+#     굽지 않는 것: ① egress 동의 마커(STATE_DIR/setup_complete)
+#     ② 원격 대시보드(자체호스팅 뷰어) 자동시작 ③ 어떤 비밀/자격증명.
 #     (claude.ai Code 탭 원격조종 = remoteControlAtStartup, 아웃바운드 HTTPS 전용·수신포트 없음.)
 #   • 멱등: 다시 실행해도 안전(이미 있으면 건너뜀). 단 v0.1.1 부터 ~/.claude 사전설정은
 #     "비어있을 때만 생성"으로 보존(기존 사용자 데이터 미파괴).
@@ -67,6 +67,15 @@ if command -v apt-get >/dev/null 2>&1; then
   apt-get update -y
   apt-get install -y --no-install-recommends \
     ca-certificates curl git python3 python3-venv nodejs npm zstd sudo locales tzdata
+  # iproute2(ss): disable-remote.sh 의 포트→PID 탐지와 cockpit-dashboard orphan 폴백용(최소 WSL
+  # Ubuntu 엔 부재 실측 — cc-cockpit2). 대시보드 정상 경로는 pidfile 이라 ss 무의존 → **비치명 설치**
+  # (실패해도 이미지 빌드 계속·python socket 이 LISTEN 판정 커버, Codex 4d ⑧).
+  apt-get install -y --no-install-recommends iproute2 \
+    || warn "iproute2 설치 실패 — cockpit-dashboard 정상 경로(pidfile)는 무관, orphan 폴백만 제한"
+  # wslu(wslview): /login 브라우저 자동 오픈 1순위 도구(5.5 래퍼가 사용). 비-우분투 베이스 등
+  # 부재 시에도 이미지 빌드는 계속 — 래퍼의 powershell.exe 절대경로 폴백이 커버(비치명).
+  apt-get install -y --no-install-recommends wslu \
+    || warn "wslu 설치 실패 — cockpit-open-url 은 powershell.exe 폴백으로 동작"
   # 한글 메시지 깨짐 방지(선택). 실패해도 치명 아님.
   sed -i 's/^# *\(en_US.UTF-8\)/\1/; s/^# *\(ko_KR.UTF-8\)/\1/' /etc/locale.gen 2>/dev/null || true
   locale-gen en_US.UTF-8 ko_KR.UTF-8 2>/dev/null || true
@@ -222,6 +231,248 @@ else
 fi
 # 로그인(OAuth)은 사용자별이라 절대 굽지 않는다 — 첫 WSL 실행 때 `claude` 로그인.
 
+# ── 5.5) 브라우저 오픈 래퍼(/login OAuth 자동 오픈) — 무조건 설치 ──────────
+# appendWindowsPath=false(§3) 라 wslview 가 Windows exe 를 PATH 에서 못 찾을 수 있어
+# 폴백 체인(wslview→xdg-open→powershell.exe 절대경로)을 래퍼로 베이크. Claude Code 는
+# $BROWSER 존중. URL 을 열기만 하며 외부송신·동의와 무관(OFF 불변식 무영향).
+# PRECONFIGURE 게이트 밖: 사용자 선호가 아니라 시스템 배관(0 이어도 /login UX 성립 필요).
+log "5.5) cockpit-open-url 래퍼 + BROWSER env"
+cat > /usr/local/bin/cockpit-open-url <<'OPENURL'
+#!/usr/bin/env bash
+# cockpit-open-url — $BROWSER 래퍼: WSL 안에서 URL 을 Windows 기본 브라우저로 연다.
+# 체인: wslview → xdg-open → powershell.exe(절대경로·appendWindowsPath=false 전제).
+# 전부 실패 시 비0 종료 = 호출측(Claude Code)이 URL 표시 → 수동 복사 폴백 자연 유지.
+set -u
+url="${1:-}"
+[ -n "$url" ] || { echo "usage: cockpit-open-url <http(s)-url>" >&2; exit 2; }
+# 스킴+문자 allowlist(bash 정규식·anchored — 개행/제어문자 포함 전체 문자열 검증) —
+# 아래 PowerShell 단일인용('$url') 리터럴 안전성의 전제. ' " ` $ 공백 ( ) ; < > | \ 개행
+# 전부 거부(OAuth URL 필요 문자는 전부 포함). grep 라인단위 검사는 개행 통과 구멍(Codex 4d).
+# 거부 메시지에 URL 미출력(제어문자 터미널 출력 방지) — Claude Code 가 어차피 URL 을 표시한다.
+_re='^https?://[A-Za-z0-9._~:/?#@&=%+-]+$'
+if ! (export LC_ALL=C; [[ "$url" =~ $_re ]]); then
+  echo "[cockpit-open-url] 지원하지 않는 URL 형식/문자 — 화면에 표시된 URL 을 직접 여세요." >&2
+  exit 2
+fi
+# opener 가 존재하되 멈추면 /login 흐름이 막힘 → timeout 가드(부재 시 직접 실행).
+_to=""; command -v timeout >/dev/null 2>&1 && _to="timeout 5"
+command -v wslview >/dev/null 2>&1 && $_to wslview "$url" >/dev/null 2>&1 && exit 0
+# xdg-open 은 비-DE 환경에서 $BROWSER 를 역참조 — BROWSER=본 래퍼라 재귀 위험(Codex 4b) → 제거 후 호출.
+command -v xdg-open >/dev/null 2>&1 && $_to env -u BROWSER xdg-open "$url" >/dev/null 2>&1 && exit 0
+_PS='/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'
+if [ -x "$_PS" ]; then
+  # allowlist 통과 URL 만 도달 — 단일인용 리터럴에 ' ` $ 불포함 보장(주입 불가).
+  $_to "$_PS" -NoProfile -NonInteractive -Command "Start-Process '$url'" >/dev/null 2>&1 && exit 0
+fi
+printf '[cockpit-open-url] 브라우저 자동 열기 실패 — 이 URL 을 직접 여세요:\n  %s\n' "$url" >&2
+exit 1
+OPENURL
+chmod 0755 /usr/local/bin/cockpit-open-url
+# BROWSER env — 런처(bash -lc)·직접 진입(wsl -d) 모두 로그인 셸이라 profile.d 단일 배치로 커버.
+# 시스템 drop-in = provision 산출물이므로 매번 덮어씀(수렴 — stale BROWSER 회귀 차단, Codex 4d).
+printf '%s\n' '# cockpit: /login 등 URL 자동 오픈 래퍼(체인: wslview→xdg-open→powershell.exe)' \
+              'export BROWSER=/usr/local/bin/cockpit-open-url' > /etc/profile.d/cockpit-browser.sh
+chmod 0644 /etc/profile.d/cockpit-browser.sh
+
+# ── 5.6) 대시보드 수명관리 스크립트(옵트인 기동/종료) — 무조건 설치 ────────
+# 뷰어 본체는 굽지 않는다(reference-not-vendor — /cockpit-setup 옵트인이 핀 클론).
+# 이 스크립트는 거버넌스 레이어의 기동/종료 진입점만: Windows Cockpit-Dashboard.cmd 가
+# 부를 결정론적 절대경로(플러그인 캐시 경로는 버전 의존이라 부적합). 자동시작 등록과
+# 무관 — 존재만으로 포트 LISTEN 없음(설치≠기동 분리, smoke §6(d) OFF 불변식 유지).
+# §5.5 와 같은 heredoc 베이크(sibling 파일 금지 — staged/build 가 provision.sh+wsl.conf 만 전달).
+log "5.6) cockpit-dashboard 수명관리 스크립트"
+cat > /usr/local/bin/cockpit-dashboard <<'DASHBOARD'
+#!/usr/bin/env bash
+# cockpit-dashboard — 옵트인 대시보드 서버 수명관리(start/stop/status).
+# 설치(뷰어 핀 클론·설정 생성)는 /cockpit-setup 의 install-viewer.sh 담당 — 여기는 기동/종료만.
+# 출력 계약(기계 파싱·Cockpit-Dashboard.cmd): stdout 마지막 줄
+#   "COCKPIT_DASH_RESULT <STATE> <PORT>"  STATE=STARTED|ALREADY|STOPPED|RUNNING|NOT_INSTALLED|ERROR
+# 포트 판정 = python3 socket(외부도구 무의존 — 최소 WSL Ubuntu 엔 ss/lsof 부재 실측). 소유권 =
+#   pidfile(+/proc cmdline·starttime 검증) — 우리 수명주기의 단일 진실. orphan(외부 기동)만 ss/lsof/
+#   fuser 폴백. 사람용 안내는 stderr(한국어). start/stop 은 mkdir 원자적 락으로 직렬화(더블클릭 레이스
+#   차단). flock(exec 9>파일)은 fd 를 명령치환/데몬에 얽어 호출측($()·.cmd for /f)이 영구 hang 하는
+#   실기 사고 → fd 없는 mkdir 락으로 교체(실측 확정).
+set -u
+umask 077
+
+CONF="${CC_DASH_CONF:-$HOME/.config/cockpit/dashboard.env}"
+[ -f "$CONF" ] && . "$CONF"
+DASH_HOME="${CC_DASH_HOME:-$HOME/claude-logs}"
+SERVER="$DASH_HOME/active_server.py"
+STATE_DIR="$HOME/.config/cockpit"
+mkdir -p "$STATE_DIR"; chmod 700 "$STATE_DIR"
+LOCKDIR="$STATE_DIR/dashboard.lock.d"
+LOG="$STATE_DIR/dashboard-server.log"
+PIDFILE="$STATE_DIR/dashboard.pid"
+
+result() { printf 'COCKPIT_DASH_RESULT %s %s\n' "$1" "${2:-0}"; }
+note()   { printf '[cockpit-dashboard] %s\n' "$*" >&2; }
+
+# 포트 = 뷰어 config.json 단일 출처(뷰어는 port env 미존중 — 실측). 파싱 실패=기본 18080.
+_port() {
+  local p=""
+  [ -f "$DASH_HOME/config.json" ] && p=$(python3 -c \
+    'import json,sys;print(int(json.load(open(sys.argv[1])).get("port",18080)))' \
+    "$DASH_HOME/config.json" 2>/dev/null || true)
+  case "$p" in ''|*[!0-9]*) p=18080 ;; esac
+  { [ "$p" -ge 1 ] && [ "$p" -le 65535 ]; } || p=18080
+  printf '%s' "$p"
+}
+
+# 포트 LISTEN 여부 — python3 socket(외부도구 무의존·doctor 와 동일 방식). rc0=열림.
+_listening() {
+  python3 -c 'import socket,sys
+s=socket.socket(); s.settimeout(0.3)
+sys.exit(0 if s.connect_ex(("127.0.0.1",int(sys.argv[1])))==0 else 1)' "$1" 2>/dev/null
+}
+
+# /proc/PID/cmdline 에 active_server.py 가 있는지(우리 서버 확인·blind kill 금지).
+_is_server() {
+  [ -r "/proc/$1/cmdline" ] || return 1
+  tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null | grep -qF 'active_server.py'
+}
+# /proc/PID/stat 22번째 필드(starttime) — comm 괄호 안 공백 안전 파싱(') ' 뒤 20번째).
+_starttime() { sed -e 's/^[^)]*) //' "/proc/$1/stat" 2>/dev/null | awk '{print $20}'; }
+
+# pidfile 이 가리키는 유효한(살아있고 우리 서버인) PID 를 출력 — 아니면 빈 문자열.
+_pidfile_pid() {
+  local pid
+  [ -f "$PIDFILE" ] || return 0
+  pid=$(cat "$PIDFILE" 2>/dev/null)
+  case "$pid" in ''|*[!0-9]*) return 0 ;; esac
+  [ -d "/proc/$pid" ] && _is_server "$pid" && printf '%s' "$pid"
+}
+
+# orphan(pidfile 없음/stale) 시 포트 보유 PID 탐색 — ss→lsof→fuser 있으면. active_server.py 만.
+_orphan_server_pids() {
+  local port="$1" pids="" p
+  if command -v ss >/dev/null 2>&1; then
+    pids=$(ss -tlnpH "sport = :$port" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u || true)
+  fi
+  if [ -z "$pids" ] && command -v lsof >/dev/null 2>&1; then
+    pids=$(lsof -nP -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+  fi
+  if [ -z "$pids" ] && command -v fuser >/dev/null 2>&1; then
+    pids=$(fuser "$port/tcp" 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$' || true)
+  fi
+  for p in $pids; do _is_server "$p" && printf '%s\n' "$p"; done
+}
+
+# 우리 서버가 살아있나(pidfile 우선·orphan 폴백). rc0=예.
+_server_alive() { [ -n "$(_pidfile_pid)" ] || [ -n "$(_orphan_server_pids "$1")" ]; }
+
+cmd_start() {
+  if [ ! -f "$SERVER" ]; then
+    note "뷰어 미설치 — Claude Code 안에서 /cockpit-setup 의 대시보드 스텝을 먼저 실행하세요."
+    result NOT_INSTALLED 0; return 3
+  fi
+  local port; port=$(_port)
+  if _listening "$port"; then
+    if _server_alive "$port"; then
+      note "이미 실행 중(포트 $port)."; result ALREADY "$port"; return 0
+    fi
+    note "포트 $port 를 무관 프로세스가 사용 중 — 대시보드를 띄울 수 없습니다."
+    result ERROR "$port"; return 4
+  fi
+  # 변환(best-effort): 첫 실행이면 동기 1회로 열자마자 목록 표시 시도, 이후엔 백그라운드 갱신(즉시 열림 우선).
+  # 세션이 없으면 convert 는 index.html 을 안 만든다("No sessions to convert"·exit0·실측) — 정상 상태이며
+  # 기동을 막지 않는다(서버는 index 없이도 LISTEN·실측). 세션이 생기면 /refresh·다음 start 가 채운다.
+  if [ ! -f "$DASH_HOME/index.html" ]; then
+    note "세션 목록 변환 시도 중(잠시 걸릴 수 있음)..."
+    ( cd "$DASH_HOME" && timeout 300 python3 convert_session.py ) >>"$LOG" 2>&1 || true
+    chmod 600 "$LOG" 2>/dev/null || true
+  else
+    # setsid -f: 백그라운드 convert 를 init 로 orphan(호출 셸이 do_wait 로 안 붙잡게 — 아래 데몬과 동일 이유).
+    ( cd "$DASH_HOME" && setsid -f timeout 300 python3 convert_session.py >>"$LOG" 2>&1 ) 2>/dev/null
+  fi
+  # setsid -f + exec: 내부 bash 가 자신의 PID($$)를 pidfile 에 쓰고 exec 로 python 이 됨 → pidfile=python
+  # 실제 PID(세션 분리로 창/호출 셸 종료 후에도 서버 유지). ss/lsof 무의존 소유권 기록.
+  # ★ -f(강제 fork, init 로 orphan) 필수: 평범한 setsid 는 데몬이 호출 bash 의 백그라운드 자식이라
+  #   bash 가 do_wait 로 데몬 종료를 기다리며 명령치환/.cmd for /f 파이프를 영구 보유 → 호출측 hang
+  #   (실기 확정: setsid→hang, setsid -f→3초 반환). -f 로 데몬을 init 자식으로 만들어 bash 가 즉시 종료.
+  ( cd "$DASH_HOME" && setsid -f bash -c 'echo $$ > "$1"; exec python3 active_server.py >> "$2" 2>&1' \
+      cockpit-dash "$PIDFILE" "$LOG" </dev/null >/dev/null 2>&1 ) 2>/dev/null
+  chmod 600 "$LOG" 2>/dev/null || true
+  local i=0
+  while [ "$i" -lt 30 ]; do _listening "$port" && break; sleep 0.5; i=$((i+1)); done
+  chmod 600 "$PIDFILE" 2>/dev/null || true
+  if _listening "$port" && _server_alive "$port"; then
+    note "기동 완료(포트 $port). 창을 닫으면 꺼집니다."; result STARTED "$port"; return 0
+  fi
+  note "기동 실패 — $LOG 확인."; result ERROR "$port"; return 4
+}
+
+# TERM → (미종료+starttime 동일 시) KILL 승격. PID 재사용 오격 방지(Codex 4d).
+_kill_verified() {
+  local p="$1" st i
+  st=$(_starttime "$p")
+  kill -TERM "$p" 2>/dev/null || true
+  i=0; while [ "$i" -lt 10 ] && [ -d "/proc/$p" ]; do sleep 0.5; i=$((i+1)); done
+  if [ -d "/proc/$p" ] && [ -n "$st" ] && [ "$(_starttime "$p")" = "$st" ]; then
+    note "PID $p TERM 미종료 — KILL 승격."; kill -KILL "$p" 2>/dev/null || true; sleep 1
+  fi
+}
+
+cmd_stop() {
+  local port pid pids p; port=$(_port)
+  pid=$(_pidfile_pid)
+  if [ -n "$pid" ]; then
+    _kill_verified "$pid"
+  else
+    pids=$(_orphan_server_pids "$port")
+    if [ -z "$pids" ]; then
+      rm -f "$PIDFILE" 2>/dev/null || true
+      _listening "$port" && note "포트 $port LISTEN 중이나 대시보드 PID 식별 불가(우리 프로세스 아님/도구 부재) — 수동 확인."
+      result STOPPED "$port"; return 0
+    fi
+    for p in $pids; do _kill_verified "$p"; done
+  fi
+  rm -f "$PIDFILE" 2>/dev/null || true
+  if _listening "$port" && _server_alive "$port"; then
+    note "종료 실패 — 포트 $port 가 여전히 LISTEN."; result ERROR "$port"; return 4
+  fi
+  note "종료 완료(포트 $port)."; result STOPPED "$port"; return 0
+}
+
+cmd_status() {
+  local port; port=$(_port)
+  if _listening "$port" && _server_alive "$port"; then
+    result RUNNING "$port"; return 0
+  fi
+  result STOPPED "$port"; return 1
+}
+
+# mkdir 원자적 락(fd 없음 — flock fd 상속 hang 회피). 탈취는 **소유자 PID 생존 여부**로 판정
+# (시간 기준 아님 — start 의 락내 동기 convert 가 세션 많으면 10초+ 걸려 살아있는 작업을 오탈취하는
+# 문제, Codex 4d). 소유자가 죽었으면 즉시 탈취, 살아있으면 최대 30초 대기(안전 상한).
+_acquire_lock() {
+  local i=0 owner
+  while ! mkdir "$LOCKDIR" 2>/dev/null; do
+    owner=$(cat "$LOCKDIR/pid" 2>/dev/null || true)
+    if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; then
+      rmdir "$LOCKDIR" 2>/dev/null && continue   # 소유자 사망 = stale → 탈취
+    fi
+    i=$((i+1)); [ "$i" -ge 60 ] && return 1       # 살아있는 소유자를 60×0.5=30초 기다린 뒤 포기
+    sleep 0.5
+  done
+  echo $$ > "$LOCKDIR/pid" 2>/dev/null || true    # 소유권 기록(다음 경쟁자의 생존 판정용)
+  return 0
+}
+_release_lock() { rm -f "$LOCKDIR/pid" 2>/dev/null; rmdir "$LOCKDIR" 2>/dev/null || true; }
+
+case "${1:-}" in
+  start|stop)
+    # 이중 더블클릭의 동시 기동/종료 레이스 차단. 데몬은 락 디렉터리를 상속하지 않으므로(fd 아님)
+    # 호출측 명령치환·.cmd for /f 가 hang 하지 않는다.
+    _acquire_lock || { note "다른 기동/종료 작업이 진행 중 — 잠시 후 다시 시도."; result ERROR 0; exit 6; }
+    trap '_release_lock' EXIT
+    "cmd_$1"; exit $? ;;
+  status) cmd_status; exit $? ;;
+  *) note "usage: cockpit-dashboard {start|stop|status}"; result ERROR 0; exit 2 ;;
+esac
+DASHBOARD
+chmod 0755 /usr/local/bin/cockpit-dashboard
+
 # ── 6) 첫 실행 안내문 ──────────────────────────────────────────────
 log "6) 첫 실행 안내(MOTD) 작성"
 # 플러그인 안내 = 베이크 여부에 따라 분기(4.5 판정). 베이크됐으면 2단계 안내를 쓰지 않는다(혼동 방지).
@@ -245,6 +496,7 @@ cockpit (cc-companion) — WSL2 골든 이미지
 
 첫 실행:
   1) claude 실행 → /login   # Claude Code 로그인(브라우저 OAuth) — 최초 1회.
+     브라우저가 자동으로 열립니다(안 열리면 화면에 표시된 URL 을 직접 여세요).
   2) claude 재시작(exit 후 다시 claude) → claude.ai/code 원격조종 활성.
      (최초 실행은 미로그인 상태라 원격 연결이 조용히 꺼진 채 재시도하지 않습니다 —
       로그인 후 한 번 재시작해야 켜집니다.)
@@ -313,8 +565,8 @@ LAUNCH
     chmod 0644 /etc/profile.d/cockpit.sh
   fi
 
-  # (c) settings.json — effort·model·remoteControlAtStartup 는 항상, bypass·skipDangerous 는
-  #     _bake_bypass=1(=CLAUDE.md 동반 가능) 일 때만. model 핀은 COCKPIT_MODEL_PIN="" 면 생략
+  # (c) settings.json — effort·model·remoteControlAtStartup·agentPushNotifEnabled·respondToBashCommands
+  #     는 항상, bypass·skipDangerous 는 _bake_bypass=1(=CLAUDE.md 동반 가능) 일 때만. model 핀은 COCKPIT_MODEL_PIN="" 면 생략
   #     (계정 기본). 개인 permissions.allow 는 미포함.
   if [ ! -e "$CLAUDE_DIR/settings.json" ]; then
     if command -v python3 >/dev/null 2>&1; then
@@ -324,6 +576,8 @@ out, model, effort, bake_bypass = sys.argv[1], sys.argv[2], sys.argv[3], sys.arg
 s = {
     "effortLevel": effort,
     "remoteControlAtStartup": True,              # claude.ai Code 탭 연결(아웃바운드 HTTPS·수신포트 없음)
+    "agentPushNotifEnabled": True,               # Remote Control 연결 시 작업완료 푸시(인가된 본인 모바일만·신규 포트/egress 없음)
+    "respondToBashCommands": False,              # ! bash 출력 자동응답 끔(토큰 절약·기본값 true 를 명시적으로 끔)
 }
 if bake_bypass == "1":
     s["permissions"] = {"defaultMode": "bypassPermissions"}
@@ -371,7 +625,7 @@ PYTRUST
 
   chown -R -- "$COCKPIT_USER:$COCKPIT_USER" "$CLAUDE_DIR" "$USER_HOME/.cockpit" \
               "$USER_HOME/.claude.json" 2>/dev/null || true
-  log "   사전설정 완료(egress 마커 미포함·codex 스위치 미포함·자체호스팅 대시보드 미시작)."
+  log "   사전설정 완료(egress 마커 미포함·자체호스팅 대시보드 미시작)."
 else
   log "6.5) 사전설정 건너뜀(COCKPIT_PRECONFIGURE=0 — 구 OFF-출고 동작)."
 fi
@@ -436,4 +690,4 @@ chmod 0644 /opt/cockpit/build-versions.json
 
 log "프로비저닝 완료. 사전적용=bypass·effort·model·remote-control·trust(사용자 데이터 미파괴)."
 if [ "$_plugins_baked" = "1" ]; then log "  플러그인 사전설치=베이크됨(cockpit@cc-companion v$_baked_pver·공개 commit 정체성)"; else log "  플러그인 사전설치=미베이크(첫 실행 2단계 경로)"; fi
-log "  굽지 않음(불변): egress 동의 마커·Codex 스위치·자체호스팅 대시보드 자동시작·비밀/자격증명."
+log "  굽지 않음(불변): egress 동의 마커·자체호스팅 대시보드 자동시작·비밀/자격증명."

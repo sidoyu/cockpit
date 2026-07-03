@@ -29,6 +29,10 @@ MEMORY_DIR = realexpand(
     os.environ.get("CC_MEMORY_DIR") or os.environ.get("MEMORY_DIR") or "~/.claude/cc-memory")
 MEMORY_INDEX = os.path.join(MEMORY_DIR, "MEMORY.md")
 STATUS_FILE = os.path.join(MEMORY_DIR, "PROJECT_STATUS.md")
+# 행동 규율 문서(설치 마법사가 ~/.claude/CLAUDE.md 로 설치). 유지보수 유틸이 [[link]] 인바운드 집계에만 참조(없으면 degrade).
+CLAUDE_MD = realexpand(os.environ.get("CC_CLAUDE_MD") or "~/.claude/CLAUDE.md")
+# 보관함(본채 인덱스에서 강등된 기억). 기본 = cc-memory 형제. 없으면 유틸이 생성/스킵.
+ARCHIVE_DIR = realexpand(os.environ.get("CC_ARCHIVE_DIR") or "~/.claude/cc-memory-archive")
 
 # ── 런타임 상태(운영) ── (realpath 고정: 상대 경로가 들어와 cwd 따라 상태가 갈라지는 것 방지)
 STATE_DIR = realexpand(os.environ.get("CC_STATE_DIR") or "~/.claude/cc-companion")
@@ -39,9 +43,32 @@ CWP_STATE = realexpand(os.environ.get("CWP_STATE_DIR") or os.path.join(STATE_DIR
 DEBUG_LOG = os.path.join(STATE_DIR, "debug.log")
 AUTO_REBUILD_LOG = os.path.join(STATE_DIR, "auto_rebuild.log")
 AUDIT_LOG = os.path.join(STATE_DIR, "audit.log")
+# 유지보수 유틸(G5)의 report-only 산출물 위치(운영 아티팩트). 기본 = STATE_DIR/reports.
+REPORT_DIR = realexpand(os.environ.get("CC_REPORT_DIR") or os.path.join(STATE_DIR, "reports"))
 
 # ── 선택: 세션 제목 소스(없으면 "" → 기능 degrade, 개인 대시보드 결합 제거) ──
 SUMMARIES_PATH = expand(os.environ.get("CC_SUMMARIES_PATH") or "") if os.environ.get("CC_SUMMARIES_PATH") else ""
+
+# ── 메모리 자동추출용 API 키(선택·BYO·G21) ──
+# 키 우선순위: env(ANTHROPIC_API_KEY_FOR_SCRIPTS → ANTHROPIC_API_KEY) → 이 파일.
+# 파일 폴백을 두는 이유: 로그인 셸 export 없이도(WSL 이미지의 profile.d 미배선 환경 포함)
+# Stop hook 이 키를 찾게 하려는 것. 유일한 소비처는 extract_pending(egress 동의 뒤에만 도달).
+# 마법사(setup.py set-extraction-key)가 0600 으로 기록한다 — 키 원문은 대화/트랜스크립트를 통과시키지 않는다.
+EXTRACTION_KEY_FILE = realexpand(
+    os.environ.get("CC_EXTRACTION_KEY_FILE") or "~/.config/cockpit/extraction-key")
+
+
+def read_extraction_key():
+    """메모리 자동추출용 키: env 우선, 없으면 0600 키 파일. 없으면 "".
+    파일은 키만 한 줄 담는다(setup.py 가 그 형식으로 기록). 못 읽으면 조용히 "" (기능 degrade)."""
+    k = os.environ.get("ANTHROPIC_API_KEY_FOR_SCRIPTS") or os.environ.get("ANTHROPIC_API_KEY")
+    if k and k.strip():
+        return k.strip()
+    try:
+        with open(EXTRACTION_KEY_FILE, encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
 
 
 def proj_transcript_dir(cwd=None):

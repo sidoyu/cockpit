@@ -116,12 +116,8 @@ fi
 # ── 6) 출고 불변식(핵심) ──
 # v0.1.1: 편의 설정(bypass·effort·model·remote-control·trust)은 **의도된 사전적용**.
 # 동의 무결성은 "외부 송신(egress) 동의 마커가 굽히지 않음"으로 보장한다(아래 (e)).
-# 끝까지 OFF 유지 불변식 = ① egress 마커 ② Codex 스위치 ③ 자체호스팅 대시보드 자동시작 ④ 비밀.
-sec "6) 출고 불변식(egress 동의·Codex·자체호스팅 대시보드 OFF 유지)"
-# (a) Codex 스위치 미존재
-if find "$ROOTFS"/home "$ROOTFS"/root -name 'codex_enabled' 2>/dev/null | grep -q .; then
-  FAIL "codex_enabled 스위치가 이미지에 구워짐 — OFF 출고 위반"
-else OK "codex_enabled 스위치 없음"; fi
+# 끝까지 OFF 유지 불변식 = ① egress 마커 ② 자체호스팅 대시보드 자동시작 ③ 비밀.
+sec "6) 출고 불변식(egress 동의·자체호스팅 대시보드 OFF 유지)"
 # (b) kill switch 사전생성 안 됨(사용자 동작이어야)
 if find "$ROOTFS"/home "$ROOTFS"/root -name 'CC_KILL_SWITCH' 2>/dev/null | grep -q .; then
   WARN "CC_KILL_SWITCH 가 이미지에 존재(사용자 동작이어야 함 — 확인)"
@@ -174,14 +170,15 @@ while IFS= read -r s; do
   fi
   has_bypass=0; grep -qiE 'bypassPermissions' "$s" 2>/dev/null && has_bypass=1
   is_profile=0; [ "$has_bypass" = "1" ] && is_profile=1
-  grep -qiE 'remoteControlAtStartup|effortLevel' "$s" 2>/dev/null && is_profile=1
+  grep -qiE 'remoteControlAtStartup|effortLevel|agentPushNotifEnabled|respondToBashCommands' "$s" 2>/dev/null && is_profile=1
   [ "$is_profile" = "1" ] || continue
   PROFILE="$PROFILE $rel"
   if [ "$(json_get "$s" effortLevel)" = "__NOTOOL__" ]; then
     FAIL "JSON 파서(jq/python3) 없음 — settings 의미검증 불가($rel). 검증환경에 jq 또는 python3 필요."
     continue
   fi
-  # 항상 굽는 키: effortLevel(유효값) · remoteControlAtStartup(true) · model(있으면 기대핀 정확일치)
+  # 항상 굽는 키: effortLevel(유효값) · remoteControlAtStartup(true) · agentPushNotifEnabled(true) ·
+  #             respondToBashCommands(false) · model(있으면 기대핀 정확일치)
   eff=$(json_get "$s" effortLevel)
   case "$eff" in
     low|medium|high|xhigh|max) OK "effortLevel=$eff ($rel)";;
@@ -191,6 +188,12 @@ while IFS= read -r s; do
   rc=$(json_get "$s" remoteControlAtStartup)
   [ "$rc" = "true" ] && OK "remoteControlAtStartup=true ($rel)" \
                      || FAIL "remoteControlAtStartup 가 true 아님('$rc') — 원격조종 사전 ON 미반영($rel)"
+  apn=$(json_get "$s" agentPushNotifEnabled)
+  [ "$apn" = "true" ] && OK "agentPushNotifEnabled=true ($rel)" \
+                      || FAIL "agentPushNotifEnabled 가 true 아님('$apn') — 모바일 완료푸시 사전 ON 미반영($rel)"
+  rbc=$(json_get "$s" respondToBashCommands)
+  [ "$rbc" = "false" ] && OK "respondToBashCommands=false ($rel)" \
+                       || FAIL "respondToBashCommands 가 false 아님('$rbc') — ! 자동응답 끔 미반영($rel)"
   mdl=$(json_get "$s" model)
   if [ -n "$EXPECT_MODEL" ]; then
     [ "$mdl" = "$EXPECT_MODEL" ] && OK "model 핀 일치($mdl) ($rel)" \
@@ -402,6 +405,64 @@ sec "8) 도구·버전 기록"
 if [ -e "$ROOTFS/usr/bin/node" ] || find "$ROOTFS"/usr -name 'node' 2>/dev/null | grep -q .; then OK "node 설치됨"; else WARN "node 미발견(베이스/네트워크 의존)"; fi
 if find "$ROOTFS"/usr "$ROOTFS"/home -path '*claude*' -name 'cli.js' 2>/dev/null | grep -q . || find "$ROOTFS"/usr/bin -name 'claude' 2>/dev/null | grep -q .; then OK "claude CLI 흔적 발견"; else WARN "claude CLI 미발견(빌드 시 네트워크 없으면 첫 실행 설치)"; fi
 if [ -f "$ROOTFS/opt/cockpit/build-versions.json" ]; then OK "build-versions.json(버전 기록) 존재"; else WARN "build-versions.json 없음(구 이미지 또는 provision 버전기록 단계 미적용)"; fi
+# cockpit-open-url 래퍼(provision §5.5 무조건 설치) — 누락=사일런트 /login UX 회귀 차단(FAIL).
+OU="$ROOTFS/usr/local/bin/cockpit-open-url"
+if [ -f "$OU" ]; then
+  [ -x "$OU" ] && OK "cockpit-open-url 래퍼 존재(+x)" || FAIL "cockpit-open-url 실행비트 없음 — chmod 회귀"
+else
+  FAIL "cockpit-open-url 래퍼 없음 — provision §5.5 회귀"
+fi
+grep -q '^export BROWSER=/usr/local/bin/cockpit-open-url' "$ROOTFS/etc/profile.d/cockpit-browser.sh" 2>/dev/null \
+  && OK "BROWSER env 배선(profile.d/cockpit-browser.sh)" \
+  || FAIL "cockpit-browser.sh 없음/미배선 — BROWSER env 회귀"
+# 래퍼 핵심 불변식 3종(내용 회귀 — 존재검사만으론 grep-allowlist/timeout/PS인용 후퇴 미탐, Codex 4b).
+if [ -f "$OU" ]; then
+  grep -qF "_re='^https?://" "$OU" && OK "래퍼 allowlist 정규식(anchored) 존재" \
+    || FAIL "래퍼 allowlist 정규식 회귀(grep 방식=개행 통과 구멍)"
+  grep -qF 'timeout 5' "$OU" && OK "래퍼 opener timeout 가드 존재" || FAIL "래퍼 timeout 가드 회귀"
+  grep -qF "Start-Process '\$url'" "$OU" && OK "래퍼 PS 단일인용 리터럴 호출" || FAIL "래퍼 PS 인용 방식 회귀(주입면)"
+fi
+# BROWSER 를 정의하는 profile.d 가 cockpit-browser.sh 단일인지(후행 override 오염 탐지, Codex 4b).
+_bdup=$(grep -lE '(^|[[:space:]])(export[[:space:]]+)?BROWSER=' "$ROOTFS"/etc/profile.d/*.sh 2>/dev/null | grep -v 'cockpit-browser\.sh' || true)
+[ -z "$_bdup" ] && OK "profile.d BROWSER 정의 단일(cockpit-browser.sh)" \
+  || FAIL "profile.d 에 BROWSER 중복 정의:$(echo "$_bdup" | sed "s|$ROOTFS||g" | tr '\n' ' ')"
+
+# ── 9) 대시보드 수명관리 스크립트(provision §5.6 무조건 설치) ──
+# 뷰어 본체는 굽지 않지만(reference-not-vendor·§6(d) 자동시작 OFF 불변식 유지), 기동/종료
+# 진입점 cockpit-dashboard 는 무조건 베이크. 누락·핵심 불변식 후퇴=사일런트 회귀 차단(FAIL).
+sec "9) 대시보드 수명관리 스크립트(cockpit-dashboard)"
+CD="$ROOTFS/usr/local/bin/cockpit-dashboard"
+if [ -f "$CD" ]; then
+  [ -x "$CD" ] && OK "cockpit-dashboard 존재(+x)" || FAIL "cockpit-dashboard 실행비트 없음 — chmod 회귀"
+  # 내용 불변식(존재검사만으론 안전 후퇴 미탐):
+  #  ① blind kill 금지 — cmdline(active_server.py) 검증 후에만 신호
+  grep -qF '_is_server' "$CD" && grep -qF 'active_server.py' "$CD" \
+    && OK "cockpit-dashboard cmdline 검증(blind kill 금지)" \
+    || FAIL "cockpit-dashboard cmdline 검증 회귀 — 무관 프로세스 오종료 위험"
+  #  ② 포트 판정 python socket(외부도구 무의존 — ss/lsof 부재 이미지 대응)
+  grep -qF 'connect_ex' "$CD" && OK "cockpit-dashboard 포트 판정=python socket(무의존)" \
+    || FAIL "cockpit-dashboard 포트 판정 회귀 — ss 하드의존 복귀(최소 이미지서 전면 ERROR)"
+  #  ③ pidfile 소유권 기록(setsid -f + exec 로 python 실PID). -f 필수(평범 setsid=호출측 hang).
+  grep -qF 'PIDFILE' "$CD" && grep -qF 'exec python3 active_server.py' "$CD" && grep -qF 'setsid -f' "$CD" \
+    && OK "cockpit-dashboard pidfile 소유권(setsid -f + exec)" \
+    || FAIL "cockpit-dashboard pidfile/detach 회귀 — setsid -f 누락 시 호출측(.cmd for /f) hang"
+  #  ④ mkdir 원자적 락 직렬화 — 더블클릭 레이스 차단(flock fd 상속 hang 회피)
+  grep -qF '_acquire_lock' "$CD" && grep -qF 'mkdir "$LOCKDIR"' "$CD" \
+    && OK "cockpit-dashboard mkdir 락 직렬화 존재" \
+    || FAIL "cockpit-dashboard 락 회귀 — 동시 기동 레이스(flock 복귀 시 호출측 hang)"
+  #  ⑤ umask 077 — 민감 로그/설정 권한
+  grep -qE '^umask 077' "$CD" && OK "cockpit-dashboard umask 077 존재" \
+    || FAIL "cockpit-dashboard umask 회귀 — 민감 로그 권한 느슨"
+  #  ⑥ 기계 파싱 출력 계약(.cmd 가 의존)
+  grep -qF 'COCKPIT_DASH_RESULT' "$CD" && OK "cockpit-dashboard 출력 계약(COCKPIT_DASH_RESULT) 존재" \
+    || FAIL "cockpit-dashboard 출력 계약 회귀 — Cockpit-Dashboard.cmd 파싱 깨짐"
+else
+  FAIL "cockpit-dashboard 없음 — provision §5.6 회귀"
+fi
+# 뷰어 본체 미베이크 확인(reference-not-vendor — active_server.py 가 이미지에 구워지면 위반).
+_baked_viewer=$(find "$ROOTFS"/usr/local/bin "$ROOTFS"/opt/cockpit -name 'active_server.py' 2>/dev/null || true)
+[ -z "$_baked_viewer" ] && OK "뷰어 본체 미베이크(reference-not-vendor 유지)" \
+  || FAIL "뷰어 본체가 이미지에 구워짐:$(echo "$_baked_viewer" | sed "s|$ROOTFS||g" | tr '\n' ' ') — 옵트인 클론 원칙 위반"
 
 # ── 결과 ──
 echo ""

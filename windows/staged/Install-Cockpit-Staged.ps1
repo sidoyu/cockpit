@@ -13,7 +13,7 @@
     • 베이스 rootfs 는 **체크섬으로 검증**(Canonical 게시값). 미검증은 -AllowUnverifiedBaseRootfs 명시 필요(고위험).
     • provision.sh·wsl.conf 를 base64 로 배포판에 전달 → 골든과 동일 결과(인코딩 안전·자동마운트 설정 동일).
     • 편의 설정(effort·model·원격조종·trust, 플러그인 스테이징 시 bypass)은 사전적용. 외부 송신(egress)·
-      Codex·자체호스팅 대시보드는 OFF(egress=첫 실행 동의 한 화면). staged 는 플러그인 미스테이징 시 bypass 미적용.
+      자체호스팅 대시보드는 OFF(egress=첫 실행 동의 한 화면). staged 는 플러그인 미스테이징 시 bypass 미적용.
 
   네트워크 필요(베이스 안에서 apt/npm + 이후 /plugin marketplace add).
 

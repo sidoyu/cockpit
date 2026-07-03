@@ -14,7 +14,6 @@
 # (메모리 '템플릿'만 plugin/memory-template/ 에 둔다)
 **/cwp_state/
 **/pending/*.md
-**/codex_calls/
 *.log
 
 # 파이썬

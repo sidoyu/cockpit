@@ -30,9 +30,11 @@
   },
   "provenance": {
     "base_image": "ubuntu:24.04@sha256:__BASE_DIGEST__",
-    "plugin_commit": "__PLUGIN_COMMIT__",
+    "private_source_commit": "__PRIVATE_SOURCE_COMMIT__",
+    "public_marketplace_commit": "__PUBLIC_MARKETPLACE_COMMIT__",
+    "plugin_preinstall_baked": true,
+    "claude_code_pin": "__CLAUDE_CODE_PIN__",
     "sbom": "cockpit-wsl.sbom.spdx.json",
-    "build_log": "https://github.com/sidoyu/cockpit/releases/download/v0.1.0/build-log.txt",
-    "_note": "재현 빌드 로그·SBOM·이미지 서명은 CI(단계5)에서 첨부."
+    "_note": "provenance.json·SBOM(SPDX)·이미지 서명은 CI(단계5)에서 첨부. private_source_commit=비공개 소스 HEAD, public_marketplace_commit=이미지에 베이크된 installed_plugins 정체성(빌드 시점 공개 sidoyu/cockpit HEAD). publish-gate 가 이 키집합을 생성본 manifest.json 과 대조한다(스키마 드리프트 차단)."
   }
 }

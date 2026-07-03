@@ -7,6 +7,9 @@
   install [--dry-run|--apply] [--enable-bypass] [--enable-memory-egress]
                             메모리 디렉터리·CLAUDE.md·(선택)bypass·(선택)egress 설치. 기본 = dry-run.
                             모든 변경은 백업 후 진행 → rollback 으로 되돌림.
+  set-extraction-key [--from-env [VAR]] [--remove] [--allow-nonstandard]
+                            메모리 자동추출용 API 키를 0600 키 파일에 등록/제거(선택·BYO·G21).
+                            키 원문은 argv 로 받지 않는다(ps 노출 방지) — 대화형 getpass 또는 --from-env.
   rollback [--latest|--list]  마지막(또는 지정) 백업으로 복원.
 
 설계: 기존 사용자 데이터를 **덮어쓰지 않는다**(비어있을 때만 채움). settings.json 은
@@ -30,9 +33,12 @@ sys.path.insert(0, MEM_HOOKS)
 try:
     import cc_paths
     MEMORY_DIR, STATE_DIR = cc_paths.MEMORY_DIR, cc_paths.STATE_DIR
+    EXTRACTION_KEY_FILE = cc_paths.EXTRACTION_KEY_FILE   # 메모리 추출 키 파일(단일 출처, G21)
 except Exception:
     MEMORY_DIR = os.path.expanduser(os.environ.get("CC_MEMORY_DIR") or "~/.claude/cc-memory")
     STATE_DIR = os.path.expanduser(os.environ.get("CC_STATE_DIR") or "~/.claude/cc-companion")
+    EXTRACTION_KEY_FILE = os.path.realpath(os.path.expanduser(
+        os.environ.get("CC_EXTRACTION_KEY_FILE") or "~/.config/cockpit/extraction-key"))
 
 KILL_SWITCH = os.path.expanduser(os.environ.get("CC_KILL_SWITCH") or "~/.claude/CC_KILL_SWITCH")
 BACKUP_ROOT = os.path.join(STATE_DIR, "setup-backups")
@@ -131,6 +137,66 @@ def _dash_autostart():
 
 
 # ───────────────────────── doctor ─────────────────────────
+def _dur(sec):
+    """경과 초 → 사람이 읽는 대략치(정확도보다 감각). None → '?'."""
+    if sec is None:
+        return "?"
+    sec = int(sec)
+    if sec < 90:
+        return "%d초" % max(sec, 0)
+    if sec < 5400:
+        return "%d분" % (sec // 60)
+    if sec < 172800:
+        return "%d시간" % (sec // 3600)
+    return "%d일" % (sec // 86400)
+
+
+def _watcher_status():
+    """transcript-watcher(G2) 자가점검 스냅샷(읽기 전용·import 결합 없음, G18).
+    경로는 watcher 와 동일하게 STATE_DIR/watcher/ 에서 도출. 반환 dict."""
+    wdir = os.path.join(STATE_DIR, "watcher")
+    lock = os.path.join(wdir, "watcher.lock")
+    log = os.path.join(wdir, "watcher.log")
+    findings = os.path.join(wdir, "findings.jsonl")
+    STALE = 43_200 + 300   # = transcript_watcher.LOCK_STALE_AGE (MAX_RUNTIME 12h + 300)
+    st = {"lock_exists": False, "owner": 0, "age": None, "alive": False,
+          "stale": False, "findings_n": 0, "last_detect": None, "log_mtime": None}
+    try:
+        if os.path.exists(lock):
+            st["lock_exists"] = True
+            st["age"] = time.time() - os.stat(lock).st_mtime
+            try:
+                with open(lock) as f:
+                    parts = f.read().split()
+                st["owner"] = int(parts[0]) if parts else 0
+            except Exception:
+                st["owner"] = 0
+            if st["owner"] > 0:
+                try:
+                    os.kill(st["owner"], 0)      # POSIX 존재 검사(watcher._pid_alive 미러)
+                    st["alive"] = True
+                except OSError:
+                    st["alive"] = False
+                except Exception:
+                    st["alive"] = True           # 판정 불가 → 보수적으로 생존
+            st["stale"] = st["age"] is not None and st["age"] > STALE
+    except Exception:
+        pass
+    try:
+        if os.path.isfile(findings):
+            st["last_detect"] = os.stat(findings).st_mtime
+            with open(findings, encoding="utf-8", errors="ignore") as f:
+                st["findings_n"] = sum(1 for line in f if line.strip())
+    except Exception:
+        pass
+    try:
+        if os.path.isfile(log):
+            st["log_mtime"] = os.stat(log).st_mtime
+    except Exception:
+        pass
+    return st
+
+
 def doctor():
     print("[cockpit doctor] 환경·충돌 점검 (읽기 전용)\n")
     print("플러그인 루트: %s" % PLUGIN_ROOT)
@@ -178,16 +244,30 @@ def doctor():
     if mode == "bypassPermissions":
         _p(WARN, "bypass(권한 확인 생략) 이미 켜져 있음 — GOVERNANCE.md 경계 준수 필수")
 
-    # extraction key (선택) — Remote Control 은 ANTHROPIC_API_KEY 가 설정돼 있으면 거부되므로,
-    # 메모리 추출 키는 ANTHROPIC_API_KEY_FOR_SCRIPTS 로 두는 것을 권장(충돌 회피).
+    # extraction key (선택·G21) — Remote Control 은 ANTHROPIC_API_KEY 가 설정돼 있으면 거부되므로,
+    # 메모리 추출 키는 ANTHROPIC_API_KEY_FOR_SCRIPTS(또는 아래 0600 키 파일) 로 두는 것을 권장(충돌 회피).
     key_scripts = bool(os.environ.get("ANTHROPIC_API_KEY_FOR_SCRIPTS"))
     key_plain = bool(os.environ.get("ANTHROPIC_API_KEY"))
-    has_key = key_scripts or key_plain
-    _p(INFO if has_key else WARN, "기억 추출용 키(ANTHROPIC_API_KEY_FOR_SCRIPTS 권장): %s" %
-       ("설정됨" if has_key else "없음 — 메모리 자동 추출은 비활성(나머지 기능은 정상)"))
+    key_file_ok, key_file_perm_warn = _key_file_status()
+    has_key = key_scripts or key_plain or key_file_ok
+    if has_key:
+        src = ("env(_FOR_SCRIPTS)" if key_scripts else
+               "env(ANTHROPIC_API_KEY)" if key_plain else
+               "키 파일 %s" % EXTRACTION_KEY_FILE)
+        _p(INFO, "기억 추출용 키: 설정됨 (출처: %s)" % src)
+        if key_file_ok and key_file_perm_warn:
+            _p(WARN, "키 파일 권한이 느슨함(%s) — 본인만 읽도록 권장: chmod 600 '%s'"
+               % (key_file_perm_warn, EXTRACTION_KEY_FILE))
+    else:
+        _p(WARN, "기억 추출용 키: 없음 — 메모리 자동 추출은 비활성(나머지 기능은 정상).")
+        _p(INFO, "  등록(키는 대화에 남기지 않음): python3 '%s' set-extraction-key" % os.path.realpath(__file__))
+        _p(INFO, "  발급(비개발자용): console.anthropic.com 로그인 → API Keys → Create Key → 키 복사(1회만 표시)."
+                 " 결제수단/크레딧 등록 필요.")
+        _p(INFO, "  ⚠ 과금: API 키는 Claude Max/Pro 정액 구독과 **별개**로 사용량만큼 과금(pay-per-token)."
+                 " 추출은 Haiku 로 세션당 극소액(수천 토큰). 사용량 한도(spend limit) 설정 권장.")
     if key_plain and not key_scripts:
         _p(WARN, "ANTHROPIC_API_KEY 설정됨 — claude.ai Remote Control 과 충돌 가능(키 설정 시 Remote Control 거부). "
-                 "추출 키는 ANTHROPIC_API_KEY_FOR_SCRIPTS 로 옮기는 것을 권장.")
+                 "추출 키는 ANTHROPIC_API_KEY_FOR_SCRIPTS 또는 키 파일(set-extraction-key)로 옮기는 것을 권장.")
 
     # kill switch
     if os.path.exists(KILL_SWITCH):
@@ -195,19 +275,100 @@ def doctor():
     else:
         _p(OK, "긴급정지 비활성(정상). 경로: %s" % KILL_SWITCH)
 
-    # 보조 검토(Codex) — 활성화 스위치(선택 기능, 기본 비활성)
-    codex_switch = os.path.expanduser(os.environ.get("CC_CODEX_ENABLED") or "~/.claude/codex_enabled")
-    if os.path.exists(codex_switch):
-        _p(WARN, "보조 검토(Codex) 활성 — 켜져 있으면 같은 맥락이 OpenAI 에도 전송(이중 송출). 끄기: rm '%s'" % codex_switch)
+    # transcript-watcher(G2·G18/G19) 자가점검 — 기동 여부·lockfile·최근 감지.
+    # 미가동은 정상(세션 시작 훅이 기동, 유휴 시 자가종료). stale/좀비 락만 주의.
+    ws = _watcher_status()
+    if ws["lock_exists"] and ws["stale"]:
+        _p(WARN, "transcript-watcher lockfile 이 오래됨(%s 경과) — 죽은 워처의 stale 락일 수 있음. "
+                 "다음 세션 시작이 회수·재기동(수동: rm '%s')." % (_dur(ws["age"]), os.path.join(STATE_DIR, "watcher", "watcher.lock")))
+    elif ws["lock_exists"] and ws["alive"]:
+        _p(OK, "transcript-watcher 가동 중(pid %d · 락 나이 %s)." % (ws["owner"], _dur(ws["age"])))
+    elif ws["lock_exists"]:
+        _p(WARN, "transcript-watcher lockfile 은 있으나 소유 프로세스(pid %d) 미생존 — 다음 세션 시작이 회수·재기동."
+           % ws["owner"])
     else:
-        _p(INFO, "보조 검토(Codex) 비활성(스위치 없음). 켜기: touch '%s'" % codex_switch)
+        _p(INFO, "transcript-watcher 미가동(락 없음) — 세션 시작 훅이 기동하고 유휴 시 자가 종료(정상).")
+    if ws["findings_n"]:
+        _p(INFO, "  최근 감지 findings %d건(최종 %s 전) — 다음 세션 시작 컨텍스트에 요약 주입."
+           % (ws["findings_n"], _dur(time.time() - ws["last_detect"]) if ws["last_detect"] else "?"))
+    elif ws["log_mtime"]:
+        _p(INFO, "  감지 findings 0건(최근 세션 차단/미포착 에러 없음) · 로그 최종 갱신 %s 전."
+           % _dur(time.time() - ws["log_mtime"]))
+    else:
+        _p(INFO, "  watcher 로그 없음(아직 미기동/첫 실행 전 — 정상).")
+
+    # 사전조건/환경 안내(G20·doctor측). 능동 네트워크 probe 는 하지 않는다(부작용 회피) — 의존만 고지.
+    _p(INFO if _is_wsl() else WARN, "실행 환경: %s" % (
+        "WSL2 배포판 안(cockpit 표준)" if _is_wsl()
+        else "WSL 아님(플러그인 단독/개발 환경) — 이미지 기반 안내 일부는 해당 없음"))
+    _p(INFO, "네트워크 의존(프록시·보안제품이 막으면 해당 기능만 실패, 나머지 정상): "
+             "메모리 자동추출=api.anthropic.com · 대시보드 뷰어 설치=github.com · claude 로그인=OAuth 브라우저.")
+    _p(INFO, "설치측 사전점검(다중 WSL 배포판·포트 충돌·SmartScreen·프록시 차단)은 설치 .cmd/ps1 계층이 담당 "
+             "(windows/README) — 이 doctor 는 배포판 안 런타임 점검용.")
 
     # 원격 대시보드 — ON/OFF 탐지(선택 기능·기본 비활성·이 패키지에서 가장 위험; GOVERNANCE 6장).
     # 자동시작 탐지는 OS별(_dash_autostart): macOS=launchd plist, Linux/WSL=systemd --user 유닛.
     # (포트 LISTEN 탐지는 socket 이라 크로스플랫폼 — 실제 가동 여부의 1차 신호.)
     dash_conf = os.path.expanduser("~/.config/cockpit/dashboard.env")
-    # 포트: 환경변수 → 설정파일(CC_DASH_PORT) → 기본 18080 순.
-    port_src = os.environ.get("CC_DASH_PORT") or (os.path.exists(dash_conf) and _conf_value(dash_conf, "CC_DASH_PORT")) or "18080"
+
+    # 뷰어 설치 상태(옵트인·§4-4) — viewer-pin.txt(단일 출처)와 HEAD 대조. 미설치=정상(INFO).
+    dash_home = os.path.expanduser(os.environ.get("CC_DASH_HOME")
+                or (os.path.exists(dash_conf) and _conf_value(dash_conf, "CC_DASH_HOME")) or "~/claude-logs")
+    pin_file = os.path.join(PLUGIN_ROOT, "dashboard", "viewer-pin.txt")
+    pin = _conf_value(pin_file, "VIEWER_PIN") if os.path.exists(pin_file) else None
+    viewer_cfg = os.path.join(dash_home, "config.json")
+    if os.path.isdir(os.path.join(dash_home, ".git")):
+        head = None
+        try:
+            g = subprocess.run(["git", "-C", dash_home, "rev-parse", "HEAD"],
+                               capture_output=True, text=True, timeout=5)
+            head = g.stdout.strip() if g.returncode == 0 else None
+        except Exception:
+            pass
+        if pin and head == pin:
+            _p(OK, "대시보드 뷰어 설치됨 — 핀 일치(%s…): %s" % (pin[:7], dash_home))
+        else:
+            _p(WARN, "대시보드 뷰어 핀 불일치/판독불가(HEAD=%s·핀=%s) — dashboard/install-viewer.sh 재실행으로 핀 복귀: %s"
+               % ((head or "?")[:7], (pin or "?")[:7], dash_home))
+    elif os.path.isdir(dash_home):
+        _p(WARN, "대시보드 경로가 git 클론이 아님(%s) — 핀 검증 불가(수동 설치본?). 접근통제 자가검증은 README 참조." % dash_home)
+    else:
+        _p(INFO, "대시보드 뷰어 미설치(옵트인 — /cockpit-setup 대시보드 스텝에서 설치)")
+
+    # 노출 안전(Codex 4d): bind 가 loopback 이 아니면 개인 세션 로그가 네트워크 대역에 열릴 수 있다.
+    _bind_srcs = []
+    _b = os.environ.get("CC_DASH_BIND") or (os.path.exists(dash_conf) and _conf_value(dash_conf, "CC_DASH_BIND"))
+    if _b:
+        _bind_srcs.append(("env/dashboard.env", _b))
+    if os.path.isfile(viewer_cfg):
+        try:
+            with open(viewer_cfg, encoding="utf-8") as f:
+                _bind_srcs.append(("config.json", str(json.load(f).get("bind", "127.0.0.1"))))
+        except Exception:
+            pass
+    def _is_loopback(v):
+        v = (v or "").strip().strip("[]")
+        if v in ("localhost", "::1"):
+            return True
+        try:
+            import ipaddress
+            return ipaddress.ip_address(v).is_loopback   # 127.0.0.0/8 · ::1
+        except ValueError:
+            return v.startswith("127.")
+    for _src, _bv in _bind_srcs:
+        if not _is_loopback(_bv):
+            _p(WARN, "대시보드 bind=%s (%s) — loopback 아님: 원격 노출 구성. README '자가검증(필수)' 통과 전 켜지 말 것." % (_bv, _src))
+
+    # 포트: 뷰어 config.json(뷰어가 실제 읽는 단일 출처) → 환경변수/dashboard.env → 기본 18080 순.
+    port_src = None
+    if os.path.isfile(viewer_cfg):
+        try:
+            with open(viewer_cfg, encoding="utf-8") as f:
+                port_src = json.load(f).get("port")
+        except Exception:
+            port_src = None
+    if not port_src:
+        port_src = os.environ.get("CC_DASH_PORT") or (os.path.exists(dash_conf) and _conf_value(dash_conf, "CC_DASH_PORT")) or "18080"
     try:
         dash_port = int(port_src)
     except (ValueError, TypeError):
@@ -229,6 +390,23 @@ def doctor():
     else:
         _p(OK, "원격 대시보드 OFF(systemd/launchd 자동시작 유닛 미등록·포트 %d 미개방). 설정 파일: %s"
            % (dash_port, "있음" if os.path.exists(dash_conf) else "없음"))
+
+    # 유지보수 도구 발견성(G5 유틸·G7 백업) — 훅 미배선 수동 도구라 doctor 로 안내.
+    backup_dir = os.path.realpath(os.path.expanduser(os.environ.get("CC_BACKUP_DIR") or "~/cockpit-backups"))
+    bks = []
+    if os.path.isdir(backup_dir):
+        bks = sorted(f for f in os.listdir(backup_dir)
+                     if f.startswith("cockpit-backup-") and f.endswith(".tar.gz"))
+    if bks:
+        last = os.path.join(backup_dir, bks[-1])
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(last)))
+        _p(INFO, "기억·상태 백업: %d개(%s) · 최근 %s. 생성: python3 %s/backup.py"
+           % (len(bks), backup_dir, when, MEM_HOOKS))
+    else:
+        _p(INFO, "기억·상태 백업 없음 — 재설치는 배포판 내부 기억을 지웁니다. 재설치 전 권장: "
+                 "python3 %s/backup.py (위치=CC_BACKUP_DIR, WSL 은 재설치 생존 위해 /mnt/c/... 권장)" % MEM_HOOKS)
+    _p(INFO, "메모리 유지보수(수동·report-only): %s 의 diet_suggest·freshness_check·read_report·"
+             "build_archive_index·rotate_intent_log" % MEM_HOOKS)
 
     print("\n결과: %s" % ("문제 %d건 — 위 ✗ 확인" % issues if issues else "치명 문제 없음. install 진행 가능."))
     return 1 if issues else 0
@@ -262,6 +440,112 @@ def _files_differ(a, b):
             return fa.read() != fb.read()
     except Exception:
         return True
+
+
+# ───────────────────────── 메모리 추출 키(선택·BYO·G21) ─────────────────────────
+def _key_file_status():
+    """키 파일 상태 → (내용 있음 bool, 권한경고 문자열 또는 None).
+    권한경고 = group/other 비트가 켜져 있으면 'rw-r--r--' 류 표기, 아니면 None."""
+    try:
+        if not os.path.isfile(EXTRACTION_KEY_FILE):
+            return False, None
+        with open(EXTRACTION_KEY_FILE, encoding="utf-8") as f:
+            has_content = bool(f.read().strip())
+        mode = os.stat(EXTRACTION_KEY_FILE).st_mode & 0o777
+        perm_warn = oct(mode) if (mode & 0o077) else None
+        return has_content, perm_warn
+    except Exception:
+        return False, None
+
+
+def _write_extraction_key_file(key):
+    """키를 0600 으로 원자적 기록(부모 0700). 키 원문은 절대 print 하지 않는다."""
+    import tempfile
+    d = os.path.dirname(EXTRACTION_KEY_FILE)
+    os.makedirs(d, exist_ok=True)
+    try:
+        os.chmod(d, 0o700)   # 이미 있으면 권한 조여 둠(best-effort)
+    except OSError:
+        pass
+    # mkstemp = 랜덤 이름·O_EXCL·0600 생성 → 고정 tmp 의 기존 파일/symlink 를 추종하지 않음(Codex 4f 발견2 하드닝).
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".ek-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(key.strip() + "\n")
+        os.chmod(tmp, 0o600)   # mkstemp 도 0600 이지만 명시(방어)
+        os.replace(tmp, EXTRACTION_KEY_FILE)
+    except Exception:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+    os.chmod(EXTRACTION_KEY_FILE, 0o600)
+
+
+def set_extraction_key(from_env=None, remove=False, allow_nonstandard=False):
+    """메모리 자동추출용 API 키를 0600 키 파일에 등록/제거.
+    입력 경로(우선순위): --remove / --from-env VAR / (대화형 getpass) / (파이프 stdin 한 줄).
+    키 원문은 argv 로 받지 않는다(ps 노출 방지) — 대화/트랜스크립트를 통과시키지 않기 위함."""
+    if remove:
+        try:
+            os.remove(EXTRACTION_KEY_FILE)
+            _p(OK, "키 파일 제거됨: %s" % EXTRACTION_KEY_FILE)
+        except FileNotFoundError:
+            _p(INFO, "키 파일이 이미 없음: %s" % EXTRACTION_KEY_FILE)
+        except OSError as e:
+            _p(BAD, "키 파일 제거 실패: %s" % e)
+            return 2
+        # 파일 제거만으로 자동추출이 꺼지는 게 아니다 — env 키가 남아 있으면 계속 잡힌다(정직 고지, Codex 4f 발견1).
+        if os.environ.get("ANTHROPIC_API_KEY_FOR_SCRIPTS") or os.environ.get("ANTHROPIC_API_KEY"):
+            _p(WARN, "환경변수 API 키가 아직 설정돼 있어 추출 키는 여전히 잡힙니다 — 완전 비활성은 그 env 도 unset 하거나 "
+                     "egress 마커 제거: rm '%s'" % os.path.join(STATE_DIR, "setup_complete"))
+        else:
+            _p(INFO, "env API 키도 없음 — 메모리 자동추출은 이제 비활성(수동 기억으로 복귀).")
+        return 0
+
+    # 키 수집(원문은 화면·로그에 남기지 않는다)
+    key = None
+    if from_env is not None:
+        # from_env == "" → 기본 변수 자동탐색. 특정 변수명이면 그것만.
+        names = [from_env] if from_env else ["ANTHROPIC_API_KEY_FOR_SCRIPTS", "ANTHROPIC_API_KEY"]
+        for n in names:
+            v = os.environ.get(n, "")
+            if v.strip():
+                key = v.strip()
+                _p(INFO, "환경변수 %s 에서 키를 읽었습니다(값은 표시하지 않음)." % n)
+                break
+        if not key:
+            _p(BAD, "지정한 환경변수에서 키를 찾지 못했습니다: %s" % ", ".join(names))
+            return 2
+    elif sys.stdin is not None and sys.stdin.isatty():
+        import getpass
+        try:
+            key = getpass.getpass("Anthropic API 키를 붙여넣으세요(화면에 표시되지 않음): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            _p(INFO, "취소됨 — 키를 등록하지 않았습니다.")
+            return 1
+    else:
+        # 비대화(파이프) — 한 줄 stdin. 에이전트가 키 원문을 대신 입력하는 경로는 권장하지 않음(대화 노출).
+        key = (sys.stdin.readline() if sys.stdin else "").strip()
+
+    if not key:
+        _p(BAD, "빈 키입니다 — 등록하지 않았습니다.")
+        return 2
+    if not key.startswith("sk-ant-") and not allow_nonstandard:
+        _p(BAD, "Anthropic 키 형식(sk-ant-…)이 아닙니다. 오타 방지를 위해 등록을 막았습니다.")
+        _p(INFO, "  정말 이 값을 쓰려면 --allow-nonstandard 를 붙이세요(값은 여전히 표시하지 않음).")
+        return 2
+    try:
+        _write_extraction_key_file(key)
+    except OSError as e:
+        _p(BAD, "키 파일 기록 실패: %s" % e)
+        return 2
+    _p(OK, "키를 0600 권한으로 저장했습니다: %s (값은 표시하지 않음)" % EXTRACTION_KEY_FILE)
+    _p(INFO, "다음 세션부터 egress 동의가 있으면 메모리 자동추출이 이 키를 사용합니다.")
+    _p(INFO, "해제: python3 '%s' set-extraction-key --remove" % os.path.realpath(__file__))
+    return 0
 
 
 # ───────────────────────── install ─────────────────────────
@@ -375,6 +659,15 @@ def install(apply, enable_bypass, accepted=False, replace_claude_md=False, enabl
     else:
         actions.append("egress(메모리 자동추출 외부송신) 비활성 유지 — 켜려면 --enable-memory-egress + --i-accept-governance(GOVERNANCE §3)")
 
+    # 5b) API 키 온보딩(G21·정직 고지) — egress 를 켜도 추출용 키가 없으면 자동추출은 no-op(수동 메모리만).
+    #     키 원문이 대화·트랜스크립트를 통과하지 않도록 사용자가 직접 set-extraction-key 로 등록하게 안내.
+    if enable_egress:
+        _has_key = bool(os.environ.get("ANTHROPIC_API_KEY_FOR_SCRIPTS")
+                        or os.environ.get("ANTHROPIC_API_KEY")) or _key_file_status()[0]
+        if not _has_key:
+            actions.append("⚠ egress 는 켜지만 추출용 API 키 미등록 — 등록 전까지 자동추출은 no-op(수동 메모리). "
+                           "등록: setup.py set-extraction-key(키는 대화에 안 남김) · 발급: console.anthropic.com(사용량 과금 주의)")
+
     # 출력
     for a in actions:
         _p(INFO, a)
@@ -482,6 +775,11 @@ def main():
                     help="GOVERNANCE.md 동의 확인 — --enable-bypass / --enable-memory-egress 에 필수")
     ip.add_argument("--replace-claude-md", action="store_true",
                     help="기존 ~/.claude/CLAUDE.md 를 템플릿으로 교체(기본=보존, 교체 전 자동 백업)")
+    sk = sub.add_parser("set-extraction-key")
+    sk.add_argument("--from-env", nargs="?", const="", default=None, metavar="VAR",
+                    help="키 원문 대신 환경변수에서 읽어 저장(기본: ANTHROPIC_API_KEY_FOR_SCRIPTS→ANTHROPIC_API_KEY)")
+    sk.add_argument("--remove", action="store_true", help="등록한 키 파일 삭제(자동추출 비활성 복귀)")
+    sk.add_argument("--allow-nonstandard", action="store_true", help="sk-ant- 로 시작하지 않는 값도 허용")
     rb = sub.add_parser("rollback")
     rb.add_argument("--latest", action="store_true")
     rb.add_argument("--list", action="store_true")
@@ -492,6 +790,9 @@ def main():
         return install(apply=args.apply and not args.dry_run, enable_bypass=args.enable_bypass,
                        accepted=args.i_accept_governance, replace_claude_md=args.replace_claude_md,
                        enable_egress=args.enable_memory_egress)
+    if args.cmd == "set-extraction-key":
+        return set_extraction_key(from_env=args.from_env, remove=args.remove,
+                                  allow_nonstandard=args.allow_nonstandard)
     if args.cmd == "rollback":
         return rollback("--list" if args.list else "--latest")
     return 1

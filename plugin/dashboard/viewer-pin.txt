@@ -1,0 +1,6 @@
+# 뷰어(공개 claude-session-dashboard) 핀 — 단일 출처.
+# install-viewer.sh(설치 checkout)와 setup.py doctor(핀 대조)가 함께 읽는다(드리프트 방지).
+# 갱신 절차: 새 known-good 커밋 검증(allowlist·bind·idle-exit 스모크, plugin/dashboard/README
+# "뷰어 버전 고정") 후 이 파일만 갱신. 수기 전사 금지 — git rev-parse 출력을 기계 복사.
+VIEWER_REPO_URL=https://github.com/sidoyu/claude-session-dashboard.git
+VIEWER_PIN=9f2bdba6d6f563569bd5d6b5a20495f2355b09c9

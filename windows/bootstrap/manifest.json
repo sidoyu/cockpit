@@ -1,20 +1,20 @@
 {
   "_comment": "릴리스 매니페스트(생성본). golden-build 산출에서 채움. 런타임 신뢰는 '부트스트랩에 박힌 이미지 핀'이고 이 파일은 게시·감사용 단일 출처. 이 빌드는 미서명(체크섬 대조).",
   "schema": "cc-companion/win-release/1",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "distro_name": "cc-cockpit",
   "artifacts": {
     "image": {
       "file": "cockpit-wsl.tar.gz",
-      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.2/cockpit-wsl.tar.gz",
-      "sha256": "9b5cc736e52ad37fb731fb9723d829750b558ecf256df7ae9b232606c00a740b",
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.3/cockpit-wsl.tar.gz",
+      "sha256": "cf7da75eccc7c6f42acada446a8e1fbda890a5744f28ea3375b3eecafa2a978b",
       "format": "tar.gz",
-      "size_bytes": 431563017
+      "size_bytes": 434786327
     },
     "bootstrap": {
       "file": "Install-Cockpit.ps1",
-      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.2/Install-Cockpit.ps1",
-      "sha256": "44076034278a30affe25c5aafcf8daaa3fb6895c01fd5a213972e3937ade61a2",
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.3/Install-Cockpit.ps1",
+      "sha256": "bfa14bda0dbcc7fe6c089ff69788bf6fafe1bd131fec9c830354479de540ebcf",
       "authenticode": {
         "signed": false,
         "unsigned_acknowledged": true,
@@ -24,14 +24,14 @@
     },
     "staged_bootstrap": {
       "file": "Install-Cockpit-Staged.ps1",
-      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.2/Install-Cockpit-Staged.ps1",
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.3/Install-Cockpit-Staged.ps1",
       "sha256": "4621afeef964b5f3f52017d2c2c0fdfcd70333df4e7f2deaa55deb522a8882fc"
     }
   },
   "provenance": {
     "base_image": "ubuntu:24.04@sha256:786a8b558f7be160c6c8c4a54f9a57274f3b4fb1491cf65146521ae77ff1dc54",
-    "private_source_commit": "e2b6601",
-    "public_marketplace_commit": "4f56b71f33dc2fa1dff42eedc10180ba51ff98d8",
+    "private_source_commit": "ad1841c",
+    "public_marketplace_commit": "108dbd746e977acbe485623b41480fa16cb1de30",
     "plugin_preinstall_baked": true,
     "claude_code_pin": "2.1.198",
     "sbom": "cockpit-wsl.sbom.spdx.json",

@@ -85,7 +85,7 @@ _BASH_WRITE_RE = re.compile(
 _BASH_READ_RE = re.compile(r"\b(cat|less|more|head|tail|bat|grep|rg|ag|nl|view)\b")
 _PROT_TOKENS = ("memory/", "PROJECT_STATUS.md", "MEMORY.md")
 
-# REDACT(P5): ①알려진 키 prefix(코덱스 wrapper REDACT_PAT 포팅 — 출처 codex_call.sh, 보수적 superset 유지)
+# REDACT(P5): ①알려진 키 prefix(레닥션 wrapper 의 REDACT_PAT 포팅, 보수적 superset 유지)
 _KEY_PAT = re.compile(
     r"sk-proj-[A-Za-z0-9_-]{20,}|sk-ant-api03-[A-Za-z0-9_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|"
     r"sk-[A-Za-z0-9]{20,}|AIza[A-Za-z0-9_-]{30,}|r8_[A-Za-z0-9]{30,}|xai-[A-Za-z0-9]{20,}|"

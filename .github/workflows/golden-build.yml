@@ -161,4 +161,6 @@ jobs:
           name: cockpit-golden-image
           path: dist/windows
       - name: publish-gate.sh
-        run: bash scripts/publish-gate.sh
+        # STRICT: 산출물을 내려받은 뒤 실행하므로, dist 부재로 '검증 생략'되는 WARN 을 BLOCK 으로 승격한다
+        # (download-artifact 가 조용히 비면 image/핀 대조 스킵을 차단). Codex 4f 발견2.
+        run: PUBLISH_GATE_STRICT=1 bash scripts/publish-gate.sh

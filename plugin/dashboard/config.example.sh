@@ -12,12 +12,17 @@ export CC_DASH_HOME="${CC_DASH_HOME:-$HOME/claude-logs}"
 
 # ── 서버 ────────────────────────────────────────────────────────
 export CC_DASH_PORT="${CC_DASH_PORT:-18080}"
-# 바인드 주소(권고값). ⚠ 정직 고지: 공개 뷰어 claude-session-dashboard(d4482d5+)의 active_server.py 는
-# bind 를 **0.0.0.0 로 하드코딩**하며 이 변수를 읽지 않는다(포크하지 않는 한 못 바꾼다). 따라서 실제
-# 접근 통제는 ① 뷰어의 'VPN 대역 + localhost' allowlist ② 포트를 공개로 노출하지 않는 것 ③ WSL2 면 NAT
-# (호스트 localhost 만 도달) 셋이다(README "0.0.0.0 바인딩의 진실"·"플랫폼 메모"). 이 변수는 0.0.0.0 을
-# honor 하는 다른 뷰어를 위한 권고일 뿐이다.
-export CC_DASH_BIND="${CC_DASH_BIND:-0.0.0.0}"
+# 바인드 주소. 권장 핀 9f2bdba(2026-07-03)+ 의 뷰어는 이 변수를 존중하며 기본 127.0.0.1(로컬 전용).
+# 정식 IPv4 리터럴만 허용 — 잘못된 값("0"·"localhost" 등)은 뷰어가 기동 시 에러로 종료한다(사일런트
+# 폴백 없음). 다른 기기(폰 등) 열람이 필요할 때만 0.0.0.0 으로 바꾼다(그때도 뷰어 allowlist 는 유지).
+# ⚠ 구핀(d4482d5 이하)은 이 변수를 읽지 않고 0.0.0.0 하드코딩이었다 — 핀을 올려 쓸 것(README "바인드와
+# 노출의 진실"·"플랫폼 메모").
+export CC_DASH_BIND="${CC_DASH_BIND:-127.0.0.1}"
+
+# 유휴 자가 종료(선택, 9f2bdba+): 허용된(allowlist 통과) 요청이 N초간 없으면 뷰어 서버가 스스로 종료.
+# 비우면 끔(기본). 런처가 서버 수명을 관리하는 구성(창 닫힘=종료)의 백스톱용 — 장시간 요청 중단 방지를
+# 위해 300 이상 권장(미만이면 뷰어가 기동 시 경고).
+export CC_DASH_IDLE_EXIT_SECS="${CC_DASH_IDLE_EXIT_SECS:-}"
 # 대시보드 표시 타임존(미설정 시 UTC).
 export CC_DASH_TZ="${CC_DASH_TZ:-UTC}"
 # python 실행 파일(homebrew/시스템 등 환경에 맞게).
@@ -34,5 +39,5 @@ export CC_DASH_HEALTHCHECK_URL="${CC_DASH_HEALTHCHECK_URL:-}"
 
 # ── AI 제목 요약(선택) ──────────────────────────────────────────
 # cron 변환이 세션 제목을 LLM 으로 다듬게 하려면 별도 600 권한 키파일 경로를 둔다(없으면 첫 발화 제목).
-# ⚠️ 이중 송출: 세션 본문 일부가 LLM 제공자로 전송된다. 민감정보 금지(GOVERNANCE 3장).
+# ⚠️ 외부 송출: 세션 본문 일부가 LLM 제공자로 전송된다. 민감정보 금지(GOVERNANCE 3장).
 export CC_DASH_SUMMARY_KEY_ENV="${CC_DASH_SUMMARY_KEY_ENV:-$HOME/.config/cockpit/dashboard-summary.env}"

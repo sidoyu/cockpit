@@ -567,6 +567,64 @@ def report_text(self_sid=""):
         return "# session report 실패(무시 가능): " + str(e).replace("\n", " ")[:200]
 
 
+_WATCH_LABEL = {"AUP": "AUP차단", "5xx": "서버5xx", "RateLimit": "레이트리밋",
+                "Auth": "인증", "Timeout": "타임아웃", "Context": "컨텍스트", "API": "API"}
+
+
+def watcher_section():
+    """transcript-watcher 가 지난 세션 이후 감지한 차단/에러 요약(있으면 1줄). 소비 후 정리.
+    가동 중 watcher(append)와의 경합 회피 = 같은 findings 파일에 advisory lock 을 잡고
+    read+truncate(in-place). fcntl 없으면 best-effort. 실패는 조용히 무시(fail-safe).
+    로그 경로는 홈/사용자명 노출 방지 위해 비식별 표기만 준다."""
+    try:
+        wdir = os.path.join(cc_paths.STATE_DIR, "watcher")
+        findings = os.path.join(wdir, "findings.jsonl")
+        if not os.path.exists(findings) or os.path.getsize(findings) == 0:
+            return ""
+        try:
+            import fcntl
+        except Exception:
+            fcntl = None
+        try:
+            with open(findings, "r+", encoding="utf-8") as f:
+                if fcntl is not None:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    data = f.read()
+                    f.seek(0)
+                    f.truncate()   # in-place 비우기(inode 유지 → writer FD 무효화 안 함·재주입 방지)
+                finally:
+                    if fcntl is not None:
+                        try:
+                            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                        except Exception:
+                            pass
+        except OSError:
+            return ""
+        cats, total = {}, 0
+        for line in data.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                o = json.loads(line)
+            except Exception:
+                continue
+            c = str(o.get("category", "API"))
+            cats[c] = cats.get(c, 0) + 1
+            total += 1
+        if total == 0:
+            return ""
+        order = ["AUP", "5xx", "RateLimit", "Auth", "Timeout", "Context", "API"]
+        seq = [k for k in order if cats.get(k)] + [k for k in cats if k not in order]
+        detail = " · ".join(f"{_WATCH_LABEL.get(k, k)} {cats[k]}" for k in seq)
+        return (f"[watcher] 지난 세션 이후 감지 {total}건: {detail}. "
+                f"hook 이 못 잡은 차단/에러일 수 있음(진단 참고). "
+                f"상세: CC_STATE_DIR/watcher/watcher.log")
+    except Exception:
+        return ""
+
+
 def main():
     try:
         inp = read_input()
@@ -589,7 +647,8 @@ def main():
         parts = [head]
         pcounts = _pending_counts()  # (new, skipped, uncoded) 1회 스캔 → pending·nudge 공유(중복 디렉터리 스캔 방지)
         for sec in (pending_section(pcounts), multisession_section(self_sid, cwd, cwd_root),
-                    memory_budget_section(), cleanup_nudge_section(pcounts), status_section()):
+                    watcher_section(), memory_budget_section(), cleanup_nudge_section(pcounts),
+                    status_section()):
             if sec and sec.strip():
                 parts.append(sec)
 

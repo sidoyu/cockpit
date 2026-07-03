@@ -11,7 +11,7 @@
       임의 이름은 -AllowCustomDistroName 고위험 플래그로만 허용.
     • 관리자 권한을 스스로 올리지 않는다. WSL 미설치 시 사용자가 직접 실행할 명령만 안내하고 종료.
     • 편의 설정(bypass·effort·model·원격조종·trust)은 이미지에 사전적용 출고. 단 **외부 송신(egress) 동의**·
-      Codex·자체호스팅 대시보드는 OFF — egress 는 첫 실행 /cockpit-setup 동의 한 화면, 나머지는 명시 설정 시에만.
+      자체호스팅 대시보드는 OFF — egress 는 첫 실행 /cockpit-setup 동의 한 화면, 나머지는 명시 설정 시에만.
 
   무결성: 이 배포본은 코드서명 인증서 미보유로 Authenticode 서명이 없다(unsigned).
     무결성은 다운로드한 .ps1·이미지의 SHA-256 을 웹 다운로드 표·이 스크립트의 핀과 대조해 보장한다:
@@ -51,8 +51,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ── 게시 시 치환되는 핀 고정값(빌드/릴리스 파이프라인이 채움) ──────────────
-$PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.2/cockpit-wsl.tar.gz'
-$PinnedSha256   = '9b5cc736e52ad37fb731fb9723d829750b558ecf256df7ae9b232606c00a740b'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
+$PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.3/cockpit-wsl.tar.gz'
+$PinnedSha256   = 'cf7da75eccc7c6f42acada446a8e1fbda890a5744f28ea3375b3eecafa2a978b'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
 $MarketplaceUrl = 'https://github.com/sidoyu/cockpit'                                  # /plugin marketplace add 실주소(게시자 sidoyu·cc-companion).
 $PLACEHOLDER_HOSTS = @('example.invalid')
 

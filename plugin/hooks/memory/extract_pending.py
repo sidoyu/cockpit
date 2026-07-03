@@ -221,7 +221,9 @@ def analyze_with_haiku(conversation_text, session_summary=""):
     truncated 는 stop_reason=="max_tokens" 여부(C1 침묵 절단 식별)."""
     if not _egress_consented():
         return None, False  # 동의·설치 완료 전 egress 금지(발행 불변식). 키 부재 폴백과 동일.
-    api_key = os.environ.get("ANTHROPIC_API_KEY_FOR_SCRIPTS", os.environ.get("ANTHROPIC_API_KEY", ""))
+    # env(ANTHROPIC_API_KEY_FOR_SCRIPTS → ANTHROPIC_API_KEY) → 0600 키 파일 순(cc_paths 단일 로직, G21).
+    # 파일 폴백 덕에 로그인 셸 export 없이도(profile.d 미배선 환경) 동작. egress 동의(위 게이트) 뒤에만 도달.
+    api_key = cc_paths.read_extraction_key()
     if not api_key:
         return None, False  # 호출부가 (result, truncated) 로 언팩 — 키 없을 때도 2-tuple 유지(C1)
 
