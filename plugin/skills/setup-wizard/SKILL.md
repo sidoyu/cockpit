@@ -27,6 +27,21 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/setup-wizard/setup.py" doctor
 - `~/.claude/CLAUDE.md` 가 이미 있고 템플릿과 다르면: **기본은 보존(덮어쓰지 않음)**이라 install 이 거부된다. 기존 운영 규칙을 잃지 않으려면 그대로 두고 템플릿 내용을 수동 병합하거나, 정말 교체하려면 `--replace-claude-md`(교체 전 자동 백업 → rollback 복원 가능)를 함께 전달한다.
 - 메모리 **자동 추출** 키가 없으면 자동추출만 비활성(나머지는 정상)임을 알린다. 등록을 원하면 **아래 3.6 단계**(`set-extraction-key`)로 안내한다. ⚠️ `ANTHROPIC_API_KEY` 를 셸에 직접 export 해 두면 claude.ai **Remote Control 이 거부**되므로(키 설정 시 비활성), 추출 키는 `ANTHROPIC_API_KEY_FOR_SCRIPTS` 또는 키 파일(3.6)로 두는 것을 권장한다.
 
+### 1.5 이전 백업 복원 (재설치라면 — 멈춰 질문)
+
+doctor 가 "기억 저장소가 비어 있습니다 — 이전 백업 복원 가능"을 표시하면(= 재설치 직후일 가능성), 사용자에게 **"이전 설치의 기억·설정 백업을 발견했습니다. 복원할까요?"** 를 묻는다. 신규 설치(백업 없음/원치 않음)면 건너뛴다.
+
+```
+python3 "${CLAUDE_PLUGIN_ROOT}/hooks/memory/backup.py" --scan            # 백업 위치 탐색
+python3 "${CLAUDE_PLUGIN_ROOT}/hooks/memory/backup.py" --restore         # 기본 dry-run: 무엇이 어디로 가는지 보고만
+python3 "${CLAUDE_PLUGIN_ROOT}/hooks/memory/backup.py" --restore --apply # 사용자 확인 후 실제 복원
+```
+
+- 복원 대상 = 기억(cc-memory)·상태(cc-companion)·CLAUDE.md·(있으면) 대시보드 데이터. **settings.json 은 기본 제외**(새 이미지의 베이크 설정 보존 — 꼭 필요하면 `--include-settings`).
+- 비파괴: 기존 데이터가 있으면 `<경로>.pre-restore-<시각>` 으로 통째 보존 후 복원한다(문제 시 이름을 되돌리면 원복).
+- 백업 위치가 여러 곳이면 `--dir` 로, 특정 파일이면 `--file` 로 지정.
+- 복원 후 아래 doctor 를 다시 돌려 기억 저장소가 채워졌는지 확인한다.
+
 ### 2. 미리보기 (dry-run)
 ```
 python3 ".../setup.py" install            # 기본이 dry-run
@@ -37,10 +52,24 @@ python3 ".../setup.py" install            # 기본이 dry-run
 "권한 확인 생략(bypass)을 켤까요?"를 **명시적으로** 묻는다. 장점(매번 확인 팝업 없음)과 위험(파괴 명령 자동 실행 가능 — deny-list 가 backstop)을 균형있게 설명한다. 사용자가 켜기로 하면 다음 단계에 `--enable-bypass` 추가.
 > **참고**: cockpit WSL 골든 이미지(동료 배포본)는 **bypass 가 이미 settings.json 에 사전적용**돼 있다(2026-06-26 결정·"동의 한 화면" 외 기술세팅 사전화). 이 경우 본 단계는 "이미 켜져 있음"을 알리고, 끄려면 settings.json 의 `permissions.defaultMode` 를 제거/`ask` 로 바꾸도록 안내한다. 플러그인만 따로 설치한 비-이미지 환경에서는 위처럼 명시 질문한다.
 
-### 3.5 메모리 외부송신(egress) 결정 (별도 — 멈춰 질문)
-"기억할 만한 내용을 자동 추출해 **Anthropic API 로 외부 송신**할까요?"를 **bypass 와 별개로** 묻는다. (bypass 동의가 egress 를 자동으로 켜지 않는다 — v0.1.1 분리.) 끄면 메모리 시스템은 **로컬에서 정상 동작**하고 자동추출만 비활성된다. 켜기로 하면 다음 단계에 `--enable-memory-egress` 추가. ⚠️ 의료/PII 맥락에선 신중히(GOVERNANCE §3).
+### 3.5 기억 자동 추출 선택 — 옵션 1 / 옵션 2 (멈춰 질문)
 
-### 3.6 API 키 온보딩 (egress 를 켰다면 — 기억 자동추출용)
+기억 자동 추출 = 세션이 끝날 때마다 별도의 작은 AI(Haiku)가 방금 끝난 대화를 훑어 "기억할 가치가 있는 것"(선호·피드백·프로젝트 맥락) 후보를 자동으로 쌓아 두고, 다음 세션이 이를 반영하는 기능이다. **아래 두 옵션을 사용자에게 그대로 제시하고 고르게 한다.** 어느 쪽을 골라도 정상 경로이고, 대답이 없거나 망설이면 기본은 옵션 2(나중에 언제든 이 단계만 다시 실행 가능).
+
+**옵션 1. API 키 입력하고 기억능력 보강하기**
+- **효과**: 대화 중 직접 기록하는 수동 기억에 더해, 세션 종료 시 대화를 자동 분석해 기억 후보를 쌓는다. 다음 세션 시작 때 "pending N건" 알림으로 반영된다 — 오래 쓸수록 기억 품질 격차가 커지는 기능.
+- **조건**: ① 본인 Anthropic API 키(Claude 구독과 **별개** 과금) ② 세션 종료 후 대화 내용이 Anthropic API 로 **외부 송신**되는 것에 동의(GOVERNANCE §3 — 의료/PII 맥락에선 신중히).
+- **예상 비용**(Haiku 단가 입력 $1/출력 $5 per 백만 토큰 · 추출은 입력 15,000자/출력 2,000토큰 상한이 코드에 고정): **세션 1회 최대 약 50원, 보통 10원 안팎.** 하루 5세션 기준 한 달 통상 1천~2천 원 수준. 콘솔에서 **사용량 한도(spend limit)** 를 걸면 상한이 보장된다.
+- 선택 시: 4단계 install 에 `--enable-memory-egress` 를 추가하고, **아래 3.6 절차로 키를 등록**한다.
+
+**옵션 2. API 키 입력 없이 사용하기**
+- **효과**: 기억 시스템은 전부 정상 동작한다(세션 시작 상태 주입·수동 기억·인덱스 자동 재생성·백업). "세션 끝나고 자동으로 훑어주는" 부분만 꺼진다 — 기억은 대화 중 직접 기록한 것만 쌓인다.
+- **조건·비용 없음.** 이 기능(자동 추출) 목적의 **추가** 외부 송신이 없다는 뜻이다 — 대화 자체가 Anthropic 의 Claude 서비스로 처리되는 것은 Claude Code 의 기본 동작이며 이 선택과 무관(GOVERNANCE §3).
+- 선택 시: `--enable-memory-egress` 를 붙이지 않고 3.6 을 건너뛴다. 나중에 마음이 바뀌면 이 단계(3.5~3.6)만 다시 실행하면 된다.
+
+> 내부 구조 참고: egress 동의(`--enable-memory-egress`)와 키 등록(`set-extraction-key`)은 별개 장치다(bypass 동의가 egress 를 자동으로 켜지 않는 것과 같은 분리 원칙 — v0.1.1). 옵션 1 = 둘 다, 옵션 2 = 둘 다 없음. 한쪽만 있으면 자동추출은 안전하게 no-op 이다.
+
+### 3.6 API 키 등록 (옵션 1 을 골랐다면)
 
 egress 를 켜도 **개인 Anthropic API 키가 없으면 자동추출은 동작하지 않는다**(no-op — 정직 고지: 이 경우 기억은 **수동으로만** 쌓인다). 자동추출을 실제로 쓰려면 키를 등록한다.
 
@@ -60,14 +89,14 @@ egress 를 켜도 **개인 Anthropic API 키가 없으면 자동추출은 동작
 **발급 방법(비개발자용)**: ① `console.anthropic.com` 로그인/가입 → ② 좌측 **API Keys** → **Create Key** → ③ 생성된 키 복사(**한 번만 표시**됨) → ④ **Billing** 에 결제수단/크레딧 등록(키는 결제수단이 있어야 동작).
 
 **⚠️ 과금·보안 주의**:
-- API 키 사용량은 **Claude Max/Pro 정액 구독과 별개**로 **쓴 만큼 과금**(pay-per-token)된다. 다만 추출은 **Haiku** 로 세션당 수천 토큰 수준이라 실비용은 극소액. 그래도 콘솔에서 **사용량 한도(spend limit)** 를 걸어두길 권장.
+- API 키 사용량은 **Claude Max/Pro 정액 구독과 별개**로 **쓴 만큼 과금**(pay-per-token)된다. 예상 규모는 3.5 옵션 1 표기 그대로(세션 1회 최대 약 50원·보통 10원 안팎). 그래도 콘솔에서 **사용량 한도(spend limit)** 를 걸어두길 권장.
 - 키 파일은 0600 로 저장되므로 공유 PC 라도 본인 계정 밖에선 안 보인다. 키가 노출됐다고 판단되면 콘솔에서 **회전(revoke→재발급)** 후 `set-extraction-key` 재등록.
 - `ANTHROPIC_API_KEY`(순정 이름)를 셸에 export 하면 claude.ai Remote Control 이 거부되므로, **이 키 파일 방식** 또는 `ANTHROPIC_API_KEY_FOR_SCRIPTS` 를 쓴다.
 
 ### 3.7 대시보드(세션 열람) 결정 (선택 — 멈춰 질문)
 "세션 기록을 브라우저로 보는 **대시보드를 설치**할까요?"를 **명시적으로** 묻는다. 반드시 함께 고지:
 - 이것은 **로컬 민감 로그 뷰어**다 — 세션 로그(프롬프트·파일 경로·업무 내용)가 브라우저로 열린다. **공유 PC·회사 보안정책 기기·화면공유 중이면 설치하지 말 것**(`plugin/dashboard/README.md` 필독).
-- 설치해도 **자동시작·포트 개방은 없다**(설치≠기동). 켜는 것은 항상 명시적: Windows 에서 `Cockpit-Dashboard.cmd` 더블클릭(창 닫으면 꺼짐) 또는 WSL 안 `/usr/local/bin/cockpit-dashboard start`.
+- 설치해도 **자동시작·포트 개방은 없다**(설치≠기동). 켜는 것은 항상 명시적: Windows **바탕화면의 'Cockpit Dashboard' 아이콘** 더블클릭(설치기가 만들어 둠 — 열면 켜지고 창 닫으면 꺼짐; 아이콘이 없으면 릴리스의 `Cockpit-Dashboard.cmd` 를 받아 더블클릭) 또는 WSL 안 `/usr/local/bin/cockpit-dashboard start`.
 - 설치에 네트워크가 필요하다(공개 뷰어를 핀 커밋으로 클론).
 
 동의하면 실행:

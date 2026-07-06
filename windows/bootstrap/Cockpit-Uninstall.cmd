@@ -11,7 +11,9 @@ setlocal EnableExtensions
 set "DISTRO=cc-cockpit"
 set "SYS32=%WINDIR%\System32"
 set "WSL=%SYS32%\wsl.exe"
+set "PSEXE=%SYS32%\WindowsPowerShell\v1.0\powershell.exe"
 set "INSTALLDIR=%LOCALAPPDATA%\%DISTRO%"
+set "LAUNCHDIR=%LOCALAPPDATA%\Cockpit"
 
 if not exist "%WSL%" (
   echo [cockpit] FATAL: wsl.exe not found at %WSL% - is WSL installed?
@@ -52,9 +54,28 @@ if exist "%INSTALLDIR%" (
 )
 if exist "%INSTALLDIR%" echo [cockpit] WARNING: could not fully remove %INSTALLDIR% - delete it by hand.
 
+rem launcher artifacts: delete ONLY the files we create (never the whole folder -
+rem a user may keep their own files in %LOCALAPPDATA%\Cockpit). The bare "rd"
+rem below is non-recursive: it removes the folder only if it is empty afterwards.
+if exist "%LAUNCHDIR%" (
+  echo [cockpit] Cleaning up launcher files in: %LAUNCHDIR%
+  if exist "%LAUNCHDIR%\Launch-Cockpit.cmd" del /q "%LAUNCHDIR%\Launch-Cockpit.cmd" 2>nul
+  if exist "%LAUNCHDIR%\Cockpit-Dashboard.cmd" del /q "%LAUNCHDIR%\Cockpit-Dashboard.cmd" 2>nul
+  if exist "%LAUNCHDIR%\DashboardProfile" rd /s /q "%LAUNCHDIR%\DashboardProfile" 2>nul
+  rd "%LAUNCHDIR%" 2>nul
+)
+rem shortcuts: resolve the real Desktop/Start Menu via PowerShell (OneDrive may
+rem redirect Desktop away from %USERPROFILE%\Desktop). Delete a shortcut ONLY if
+rem its TargetPath points into our launcher folder - a same-named shortcut the
+rem user made for something else is left alone. Best-effort, never fatal.
+if exist "%PSEXE%" (
+  "%PSEXE%" -NoProfile -NonInteractive -Command "$ws=New-Object -ComObject WScript.Shell; $dir=Join-Path $env:LOCALAPPDATA 'Cockpit'; foreach($n in @('Claude (cockpit).lnk','Cockpit Dashboard.lnk')){foreach($d in @([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'))){$p=Join-Path $d $n; if(Test-Path $p){$t=$ws.CreateShortcut($p).TargetPath; if($t -like ($dir+'\*')){Remove-Item $p -Force -ErrorAction SilentlyContinue}}}}" 1>nul 2>nul
+  echo [cockpit] Removed cockpit shortcuts from Desktop / Start Menu (if any).
+)
+
 echo(
 echo [cockpit] Done. If cockpit was installed to a custom folder, remove that folder
-echo [cockpit] by hand. If a 'Claude (cockpit)' shortcut remains on the Desktop or
+echo [cockpit] by hand. If any cockpit shortcut still remains on the Desktop or
 echo [cockpit] Start Menu, delete it too. To reinstall, run Cockpit-Install.cmd.
 echo(
 pause

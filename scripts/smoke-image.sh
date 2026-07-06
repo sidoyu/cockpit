@@ -75,6 +75,22 @@ WC="$ROOTFS/etc/wsl.conf"
 if [ -f "$WC" ]; then
   grep -qE '^[[:space:]]*default[[:space:]]*=[[:space:]]*[a-z_]' "$WC" && OK "기본 사용자 설정됨" || FAIL "wsl.conf 에 default 사용자 없음(혹은 __COCKPIT_USER__ 미치환)"
   grep -q '__COCKPIT_USER__' "$WC" && FAIL "wsl.conf 에 __COCKPIT_USER__ 토큰 미치환 잔존"
+  grep -qE '__COCKPIT_(UID|GID)__' "$WC" && FAIL "wsl.conf 에 __COCKPIT_UID__/__COCKPIT_GID__ 토큰 미치환 잔존"
+  # automount uid == 기본 사용자 실제 uid (실기 발견: 불일치면 cockpit 이 /mnt/c 에 못 써 재설치 생존 백업 실패)
+  _du="$(grep -E '^[[:space:]]*default[[:space:]]*=' "$WC" | head -1 | sed -E 's/.*=[[:space:]]*//; s/[[:space:]]*$//')"
+  _optline="$(grep -E '^[[:space:]]*options[[:space:]]*=' "$WC" | head -1)"
+  _amuid="$(printf '%s' "$_optline" | grep -oE 'uid=[0-9]+' | head -1 | cut -d= -f2)"
+  _amgid="$(printf '%s' "$_optline" | grep -oE 'gid=[0-9]+' | head -1 | cut -d= -f2)"
+  _pwuid="$(grep -E "^${_du}:" "$ROOTFS/etc/passwd" 2>/dev/null | cut -d: -f3)"
+  _pwgid="$(grep -E "^${_du}:" "$ROOTFS/etc/passwd" 2>/dev/null | cut -d: -f4)"
+  if [ -n "$_amuid" ] && [ -n "$_pwuid" ]; then
+    [ "$_amuid" = "$_pwuid" ] && OK "automount uid($_amuid) == 기본 사용자 '$_du' uid(정렬됨 · /mnt/c 쓰기 가능)" || FAIL "automount uid($_amuid) != 기본 사용자 '$_du' uid($_pwuid) — cockpit 이 /mnt/c 에 못 씀(재설치 생존 백업 실패)"
+  else
+    WARN "automount uid 확인 불가(automount 미설정이면 WSL 기본 uid=1000 → 사용자 uid≠1000 시 /mnt/c 쓰기 차단 위험)"
+  fi
+  if [ -n "$_amgid" ] && [ -n "$_pwgid" ]; then
+    [ "$_amgid" = "$_pwgid" ] && OK "automount gid($_amgid) == 기본 사용자 '$_du' gid(정렬됨)" || FAIL "automount gid($_amgid) != 기본 사용자 '$_du' gid($_pwgid) — /mnt/c 그룹 소유 불일치"
+  fi
   grep -qE 'systemd[[:space:]]*=[[:space:]]*true' "$WC" && OK "systemd=true" || WARN "systemd=true 아님(의도면 무시)"
 else
   FAIL "/etc/wsl.conf 없음 — 기본 사용자·systemd 미설정"

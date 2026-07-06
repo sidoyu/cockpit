@@ -121,6 +121,11 @@ jobs:
             dist/windows/provenance.json
             dist/windows/cockpit-wsl.sbom*.json
           if-no-files-found: error
+          # 보존 3일: 이 아티팩트는 ①같은 실행 내 publish-gate 의 핀-해시 교차검증과
+          # ②run 종료 후 릴리스 승격(RELEASE runbook §2: 아티팩트 download→핀 치환→cockpit 릴리스 자산 업로드)에 쓰인다.
+          # 기본 90일 보존이면 수동 골든빌드마다 ~400MB 가 3개월 적재 → Actions 스토리지 쿼터(0.5GB) 초과(누적 4.3GB 관측).
+          # 사후 수동 download 창을 남기되 장기 적재는 끊는 절충값이 3일(승격을 워크플로 내 자동화하면 1일/즉시삭제로 더 조일 수 있음).
+          retention-days: 3
 
   windows-smoke:
     name: Windows 스모크(PS5.1 게이트 발화 + 서명)

@@ -150,9 +150,9 @@ if [ -f "$REPAIRF" ]; then
 fi   # $REPAIRF 존재 검사는 §1c 가 담당(광고된 릴리스 자산)
 
 # ── 1c) 더블클릭 .cmd 자산 존재(Dashboard·Repair·Uninstall) ──
-# 이 셋은 web 다운로드 표에 광고되는 릴리스 자산이다. Dashboard·Uninstall 은 placeholder 없음
-# (설치된 distro 만 조작·다운로드 없음)이라 핀 체인 대상은 아니지만, '존재'는 발행 조건으로 강제한다
-# (광고했는데 누락된 자산 = 깨진 약속). Repair 핀 체인은 §1b, SHA 표 대조는 §2b 가 담당.
+# 이 셋은 web 다운로드 표에 광고되는 릴리스 자산이다. Uninstall 은 placeholder 없음(설치된
+# distro 만 조작·다운로드 없음)이라 핀 체인 대상이 아니고, Dashboard 핀 체인은 §1d, Repair 핀
+# 체인은 §1b, SHA 표 대조는 §2b 가 담당. '존재'는 발행 조건으로 강제(광고했는데 누락=깨진 약속).
 sec "1c) 더블클릭 .cmd 자산 존재(Dashboard·Repair·Uninstall)"
 for _asset in Cockpit-Dashboard.cmd Cockpit-Repair.cmd Cockpit-Uninstall.cmd; do
   if [ -f "windows/bootstrap/$_asset" ]; then
@@ -161,6 +161,49 @@ for _asset in Cockpit-Dashboard.cmd Cockpit-Repair.cmd Cockpit-Uninstall.cmd; do
     BLOCK "windows/bootstrap/$_asset 없음 — web 다운로드 표에 광고된 릴리스 자산 누락. 발행 자산에 포함하세요."
   fi
 done
+
+# ── 1d) 대시보드 런처 핀 체인(ps1 §10b ↔ repo Cockpit-Dashboard.cmd ↔ manifest dashboard_cmd) ──
+# Install-Cockpit.ps1 이 바탕화면 'Cockpit Dashboard' 아이콘용으로 릴리스 자산 Cockpit-Dashboard.cmd
+# 를 받아 핀 해시로 검증한다 → ps1 핀·manifest 기록·repo 실계산 3자가 일치해야 한다(§1b 미러).
+sec "1d) 대시보드 런처 핀 체인"
+DASHF="windows/bootstrap/Cockpit-Dashboard.cmd"
+if [ -f "$DASHF" ] && [ -f "$PS1" ]; then
+  DASH_ACTUAL="$(_sha256 "$DASHF" | tr 'A-Z' 'a-z')"
+  DP_PIN="$(grep -Eo "\\\$PinnedDashboardCmdSha256 *= *'[0-9A-Fa-f]{64}'" "$PS1" | head -1 | grep -Eo '[0-9A-Fa-f]{64}')"
+  if [ -n "$DP_PIN" ]; then
+    if [ "$(printf '%s' "$DP_PIN" | tr 'A-Z' 'a-z')" = "$DASH_ACTUAL" ]; then
+      OK "ps1 \$PinnedDashboardCmdSha256 == repo Cockpit-Dashboard.cmd 실계산(일치)"
+    else
+      BLOCK "ps1 대시보드 런처 핀이 repo Cockpit-Dashboard.cmd 해시와 불일치 — 아이콘 설치가 체크섬에서 실패한다. Dashboard.cmd 변경 시 ps1 핀도 재핀. pin=$DP_PIN actual=$DASH_ACTUAL"
+    fi
+  else
+    BLOCK "Install-Cockpit.ps1 에 \$PinnedDashboardCmdSha256(64-hex) 이 없음 — §10b 핀 누락/플레이스홀더. repo Dashboard.cmd 해시로 치환하세요."
+  fi
+  DP_URL="$(grep -Eo "\\\$PinnedDashboardCmdUrl *= *'[^']*'" "$PS1" | head -1 | sed "s/.*'\\(.*\\)'.*/\\1/")"
+  case "$DP_URL" in
+    "" ) BLOCK "Install-Cockpit.ps1 에 \$PinnedDashboardCmdUrl 이 없음(§10b 미배선?)." ;;
+    *example.invalid*) BLOCK "ps1 \$PinnedDashboardCmdUrl 이 example.invalid — 실제 release 자산 URL 로 치환." ;;
+    https://*)
+      OK "ps1 \$PinnedDashboardCmdUrl = https 비-플레이스홀더"
+      MB_URL="$(jq -r '.artifacts.bootstrap.url // empty' windows/bootstrap/manifest.json 2>/dev/null || echo "")"
+      if [ -n "$MB_URL" ] && [ "${DP_URL%/*}" != "${MB_URL%/*}" ]; then
+        BLOCK "ps1 대시보드 런처 URL 이 bootstrap 과 다른 릴리스 태그를 가리킴(재핀 누락). dash=$DP_URL bootstrap=$MB_URL"
+      elif [ -n "$MB_URL" ]; then
+        OK "ps1 대시보드 런처 URL == bootstrap 릴리스 태그(체인 일치)"
+      fi ;;
+    *) BLOCK "ps1 \$PinnedDashboardCmdUrl 이 https 가 아님: $DP_URL" ;;
+  esac
+  MD_SHA="$(jq -r '.artifacts.dashboard_cmd.sha256 // empty' windows/bootstrap/manifest.json 2>/dev/null || echo "")"
+  if [ -n "$MD_SHA" ]; then
+    if [ "$(printf '%s' "$MD_SHA" | tr 'A-Z' 'a-z')" = "$DASH_ACTUAL" ]; then
+      OK "manifest dashboard_cmd.sha256 == repo 실계산(핀 체인 일치)"
+    else
+      BLOCK "manifest dashboard_cmd.sha256 이 repo Dashboard.cmd 해시와 불일치 — manifest 재생성 필요. manifest=$MD_SHA actual=$DASH_ACTUAL"
+    fi
+  else
+    WARN "manifest dashboard_cmd.sha256 미기재/jq 없음 — ps1↔manifest 대시보드 체인 미검증(§4 필수필드가 존재는 강제)."
+  fi
+fi   # $DASHF 존재 BLOCK 은 §1c 담당
 
 # ── 2) 웹 프런트도어: example.invalid 0건 + 발행 플레이스홀더 잔존 + .cmd SHA 실측 대조 ──
 sec "2) 웹 프런트도어(사용자 노출)"
@@ -204,6 +247,16 @@ if [ -f web/index.html ]; then
         BLOCK "web $_cmd SHA-256 이 repo 파일 해시와 불일치(수기전사/치환 순서 오류). .cmd 치환 확정 후 그 해시를 표에 기입. web=$_webhex actual=$_act"
       fi
     fi
+    # 2b-2) 다운로드 링크(href) 존재 — SHA 만 채우고 링크 전환을 빠뜨리는 결함 클래스 차단
+    #       (v0.1.5 실사고: 표에 SHA 는 있는데 .cmd 4행 href 부재 → 프런트도어에서 다운로드 불가).
+    #       파일 전체가 아니라 **해당 표 행(data-artifact 앵커와 같은 줄)** 안에서만 찾는다 —
+    #       주석/다른 위치의 링크로 통과하는 우회면 차단(Codex 발견3). 표 행은 한 줄 <tr> 구조.
+    _cmd_re="$(printf '%s' "$_cmd" | sed 's/\./\\./g')"
+    if printf '%s' "$_row" | grep -Eq "href=\"https://[^\"]*/releases/download/[^\"]+/${_cmd_re}\""; then
+      OK "web $_cmd 다운로드 href 존재(표 행 안·release 자산 URL)"
+    else
+      BLOCK "web/index.html $_cmd 표 행(data-artifact 앵커 줄)에 다운로드 링크(href=…/releases/download/…/$_cmd) 부재 — SHA 만 있고 링크가 없으면 사용자가 받을 수 없다(v0.1.5 실물결함 재발 차단). 그 행에 자산 URL <a href> 를 추가하세요."
+    fi
   done
 else
   WARN "web/index.html 없음(웹 트랙 미발행?)"
@@ -232,7 +285,8 @@ if [ -f "$REL" ]; then
   for _jp in \
     .artifacts.image.url .artifacts.image.sha256 \
     .artifacts.bootstrap.url .artifacts.bootstrap.sha256 \
-    .artifacts.staged_bootstrap.url .artifacts.staged_bootstrap.sha256; do
+    .artifacts.staged_bootstrap.url .artifacts.staged_bootstrap.sha256 \
+    .artifacts.dashboard_cmd.url .artifacts.dashboard_cmd.sha256; do
     _v="$(jq -r "$_jp // empty" "$REL" 2>/dev/null)"
     [ -n "$_v" ] || { BLOCK "manifest.json 필수 필드 누락: $_jp — 자산 URL/해시가 비면 교차검증이 무력화된다. 생성본에 채우세요."; _mfmiss=1; }
   done

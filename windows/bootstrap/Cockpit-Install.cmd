@@ -11,8 +11,8 @@ setlocal EnableExtensions
 
 rem ---- pinned values (release pipeline substitutes; publish-gate blocks placeholders
 rem      and enforces PS1_SHA256 == sha256(Install-Cockpit.ps1) == manifest bootstrap) ----
-set "PS1_URL=https://github.com/sidoyu/cockpit/releases/download/v0.1.3/Install-Cockpit.ps1"
-set "PS1_SHA256=bfa14bda0dbcc7fe6c089ff69788bf6fafe1bd131fec9c830354479de540ebcf"
+set "PS1_URL=https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Install-Cockpit.ps1"
+set "PS1_SHA256=940d3e699254e0051b7d2d0c7b5736b4d3d91b3656e19bf4176e261f9c7b3284"
 
 set "BASE=%~dp0"
 set "PS1=%BASE%Install-Cockpit.ps1"

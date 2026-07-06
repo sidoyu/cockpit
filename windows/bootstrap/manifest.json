@@ -1,20 +1,20 @@
 {
   "_comment": "릴리스 매니페스트(생성본). golden-build 산출에서 채움. 런타임 신뢰는 '부트스트랩에 박힌 이미지 핀'이고 이 파일은 게시·감사용 단일 출처. 이 빌드는 미서명(체크섬 대조).",
   "schema": "cc-companion/win-release/1",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "distro_name": "cc-cockpit",
   "artifacts": {
     "image": {
       "file": "cockpit-wsl.tar.gz",
-      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.3/cockpit-wsl.tar.gz",
-      "sha256": "cf7da75eccc7c6f42acada446a8e1fbda890a5744f28ea3375b3eecafa2a978b",
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.5/cockpit-wsl.tar.gz",
+      "sha256": "86d0e50400c6a97f1264811bf958c1a7f8cefa0eb6718d722b134a4bdf246a23",
       "format": "tar.gz",
-      "size_bytes": 434786327
+      "size_bytes": 434864923
     },
     "bootstrap": {
       "file": "Install-Cockpit.ps1",
-      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.3/Install-Cockpit.ps1",
-      "sha256": "bfa14bda0dbcc7fe6c089ff69788bf6fafe1bd131fec9c830354479de540ebcf",
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Install-Cockpit.ps1",
+      "sha256": "940d3e699254e0051b7d2d0c7b5736b4d3d91b3656e19bf4176e261f9c7b3284",
       "authenticode": {
         "signed": false,
         "unsigned_acknowledged": true,
@@ -24,17 +24,23 @@
     },
     "staged_bootstrap": {
       "file": "Install-Cockpit-Staged.ps1",
-      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.3/Install-Cockpit-Staged.ps1",
-      "sha256": "4621afeef964b5f3f52017d2c2c0fdfcd70333df4e7f2deaa55deb522a8882fc"
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Install-Cockpit-Staged.ps1",
+      "sha256": "905a6c19bf9dcb1d210852c01ad21beb881f9ff472eae56a650517ccc923c708"
+    },
+    "dashboard_cmd": {
+      "file": "Cockpit-Dashboard.cmd",
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Cockpit-Dashboard.cmd",
+      "sha256": "567174419ad280a239f9bbc6fe12d4a39a3f8fddac7702689e61151e476eaab7",
+      "_note": "repo 파일 그대로 자산 업로드(해시=repo 실계산·v0.1.5 자산과 동일). Install-Cockpit.ps1 §10b 가 이 자산을 핀 해시로 받아 바탕화면 'Cockpit Dashboard' 아이콘을 만든다."
     }
   },
   "provenance": {
     "base_image": "ubuntu:24.04@sha256:786a8b558f7be160c6c8c4a54f9a57274f3b4fb1491cf65146521ae77ff1dc54",
-    "private_source_commit": "ad1841c",
-    "public_marketplace_commit": "108dbd746e977acbe485623b41480fa16cb1de30",
+    "private_source_commit": "7d18893",
+    "public_marketplace_commit": "9326292d77e8c04c4715030d7a0571c8ffcbff07",
     "plugin_preinstall_baked": true,
     "claude_code_pin": "2.1.198",
     "sbom": "cockpit-wsl.sbom.spdx.json",
-    "_note": "provenance.json·SBOM(SPDX)는 릴리스에 첨부. apt/npm floating으로 완전 bit-for-bit 아님(provenance versions로 실제 설치본 추적). public_marketplace_commit = 이미지에 베이크된 installed_plugins 정체성(빌드 시점 공개 sidoyu/cockpit HEAD) — 이번 릴리스의 공개 재export commit 이 아님(manifest 가 그 commit 에 포함되므로 자기참조 불가·베이크 값과 일치 기록이 정직)."
+    "_note": "v0.1.5 = WSL 이미지 automount uid/gid fix 전용(base ubuntu(1000) 탓 cockpit=1001 이던 것을 정렬 — 재설치 생존용 /mnt/c 백업 복구). 번들 cockpit 플러그인은 무변경 = 0.1.4·commit C1 그대로. provenance.json·SBOM(SPDX)는 릴리스에 첨부. apt/npm floating으로 완전 bit-for-bit 아님(provenance versions로 실제 설치본 추적). public_marketplace_commit = 이미지에 베이크된 installed_plugins 정체성 = C1(공개 sidoyu/cockpit v0.1.4 트리·재사용). C1 의 플러그인 트리 == 빌드 소스(private_source_commit) 트리이며, 이 최종 manifest 는 재핀 전 트리인 C1 에 포함되지 않으므로 자기참조 없음. 트리 안의 manifest.json 은 지시적일 뿐 — 정본 무결성은 릴리스 자산(gh release) 기준."
   }
 }

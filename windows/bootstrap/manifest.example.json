@@ -26,6 +26,12 @@
       "file": "Install-Cockpit-Staged.ps1",
       "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.0/Install-Cockpit-Staged.ps1",
       "sha256": "__STAGED_SHA256__"
+    },
+    "dashboard_cmd": {
+      "file": "Cockpit-Dashboard.cmd",
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.0/Cockpit-Dashboard.cmd",
+      "sha256": "__DASHBOARD_CMD_SHA256__",
+      "_note": "repo 파일 그대로 자산 업로드(해시=repo 실계산). Install-Cockpit.ps1 §10b 가 이 자산을 핀 해시로 받아 바탕화면 'Cockpit Dashboard' 아이콘을 만든다."
     }
   },
   "provenance": {

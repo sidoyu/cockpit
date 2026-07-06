@@ -5,125 +5,202 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>cockpit 설치 안내 — 단일 사령탑 Claude Code 환경</title>
-<meta name="description" content="비개발 동료가 '마법사가 시키는 대로' 따라 하면 Claude Code 운영 환경을 거의 그대로 설치할 수 있는 가이드/런처.">
+<meta name="description" content="버튼 하나로 받아 더블클릭하면 Claude Code 운영 환경이 그대로 설치됩니다.">
 <link rel="stylesheet" href="./assets/style.css">
 </head>
 <body>
 <!-- ⚠️ 이 페이지는 install engine 이 아니라 가이드/런처다. 브라우저는 로컬에 무엇도 설치하지 못한다.
-     모든 설치는 사용자가 직접 복사·붙여넣기로 실행한다(설치 마법사가 안내). -->
+     설치는 사용자가 내려받은 Cockpit-Install.cmd 를 직접 더블클릭해 실행한다. -->
 
 <header class="site-header">
   <div class="wrap">
     <p class="kicker">cc-companion</p>
-    <h1>cockpit — 단일 사령탑 Claude&nbsp;Code 환경</h1>
-    <p class="lede">한 사람의 Claude Code 운영 환경을, 비개발 동료가 <strong>“마법사가 시키는 대로”</strong> 따라 하면
-      거의 그대로 깔 수 있게 만든 패키지입니다. 개인정보·시크릿은 <strong>전부 제거</strong>돼 있고,
-      각자 자기 것을 <strong>설치 마법사</strong>로 주입합니다.</p>
-    <p class="note-inline">이 페이지는 <strong>설치 엔진이 아니라 안내서</strong>입니다. 브라우저는 무엇도 자동으로 깔지 못하며,
-      아래 명령을 <strong>직접 복사·붙여넣기</strong>해서 실행합니다.</p>
+    <h1>cockpit — Claude&nbsp;Code, 세팅 없이 바로 쓰기</h1>
+    <p class="lede">한 사람이 오래 다듬은 Claude Code 운영 환경을 그대로 담은 설치판입니다.
+      아래 버튼으로 받아서 더블클릭하면 끝납니다. Windows 기준입니다.</p>
   </div>
 </header>
 
-<!-- ── 0. 거버넌스 경계 (먼저 읽고 동의) ───────────────────────────── -->
-<section id="governance" class="band band-warn">
-  <div class="wrap">
-    <h2>⚠️ 먼저 읽으세요 — 사용 경계</h2>
-    <p>이 환경은 <strong>강력하지만 느슨하게 설정</strong>되어 있습니다. 설치 전에 아래를 이해하고 동의해야 합니다.</p>
-    <ul class="boundary">
-      <li><strong>권한 확인 생략(bypass) = 켜짐.</strong> Claude가 명령 실행 전 일일이 묻지 않고 진행합니다(대표적 파괴/비가역 명령은 금지목록으로 차단하지만 <strong>완전한 보호는 아닙니다</strong>).</li>
-      <li><strong>외부 송출.</strong> 입력 내용이 모델 응답을 위해 Anthropic에 전송되고, 일부 기능(메모리 자동 추출·선택적 대시보드 요약)은 추가 외부 송신을 수반할 수 있습니다.</li>
-      <li><strong>원격 대시보드 = 기본 꺼짐(opt-in).</strong> 켜면 개인 VPN 안의 다른 기기에서 호스트를 조종할 수 있습니다(가장 위험).</li>
-      <li><strong>개인 PC에서, 비업무·비민감 데이터로만.</strong> 환자정보·개인정보(PII)·기밀을 절대 입력하지 마세요.</li>
-      <li><strong>안전장치는 보조일 뿐</strong>이며 최종 책임은 사용자에게 있습니다. 회사 보안정책과 충돌하면 회사 정책이 우선합니다.</li>
-    </ul>
-    <p class="band-actions">
-      <a class="btn btn-ghost" href="../GOVERNANCE.md">전체 거버넌스 문서 읽기 →</a>
-    </p>
-    <label class="consent">
-      <input type="checkbox" id="consent-check">
-      <span>위 경계를 읽고 이해했으며, <strong>개인 PC·비업무·비민감 데이터로만</strong> 사용하겠습니다.</span>
-    </label>
-    <p class="consent-hint" id="consent-hint">동의하면 아래 설치 단계의 복사 버튼이 활성화됩니다.</p>
-  </div>
-</section>
-
-<!-- ── 1. 무엇이 깔리나 ───────────────────────────────────────────── -->
-<section id="what" class="band">
-  <div class="wrap">
-    <h2>무엇이 깔리나</h2>
-    <div class="cards">
-      <div class="card"><h3>작업 규율(행동층)</h3><p>자율 진행 경계, 두 순간 자기점검, 읽기/검색 위생. 설치 마법사가 <code>~/.claude/CLAUDE.md</code>로 적용.</p></div>
-      <div class="card"><h3>메모리 시스템</h3><p>파일 기반(md + python 훅). 세션 시작 시 상태 주입, 종료 시 기억 후보 추출, 인덱스 자동 재생성. <strong>자동 추출(외부 송신)은 개인 API 키 옵트인</strong> — 마법사에서 등록하며 미등록 시 기억은 수동으로만 쌓입니다(키 사용량은 정액 구독과 별개로 과금, 콘솔에서 한도 설정 권장).</p></div>
-      <div class="card"><h3>안전망</h3><p>파괴/비가역 명령 금지목록(deny-list), 긴급정지(kill switch), 감사 로그.</p></div>
-      <div class="card"><h3>세션 기록 대시보드(선택)</h3><p>세션 로그를 <strong>이 PC의 브라우저 창</strong>으로 열람(<code>Cockpit-Dashboard.cmd</code> 더블클릭 · 창 닫으면 꺼짐). <strong>기본 로컬 전용</strong>, 타기기 원격 열람은 고급·옵트인.</p></div>
-      <div class="card"><h3>설치 마법사</h3><p>기본 사용자·메모리 디렉터리·선택 기능을 안내하고 충돌 검사·dry-run·롤백을 제공.</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- ── 2. 설치 ────────────────────────────────────────────────────── -->
+<!-- ── 설치 (첫 화면 = 경계 요약 + 버튼 + 4단계) ─────────────────── -->
 <section id="install" class="band">
   <div class="wrap">
-    <h2>설치</h2>
 
-    <!-- OS 선택 -->
-    <div class="os-switch" role="tablist" aria-label="운영체제 선택">
-      <button class="os-tab" data-os="windows" role="tab" aria-selected="false">Windows <span class="badge">권장 경로</span></button>
-      <button class="os-tab" data-os="macos" role="tab" aria-selected="false">macOS</button>
-    </div>
-    <p class="os-detected" id="os-detected" aria-live="polite"></p>
-
-    <!-- 사전 준비 체크리스트(수동, 자동화 불가) -->
-    <div class="checklist">
-      <h3>사전 준비 (직접 해야 하는 수동 단계)</h3>
-      <p class="muted">OAuth 로그인·외부 서비스 가입은 자동화할 수 없습니다. 먼저 끝내 두세요.</p>
-      <ul class="checks">
-        <li><label><input type="checkbox" data-persist="pre-claude"><span><strong>Claude Code 설치 + 로그인</strong> — 공식 안내에 따라 CLI를 설치하고 계정으로 로그인.</span></label></li>
-        <li class="os-only os-windows"><label><input type="checkbox" data-persist="pre-wsl"><span><strong>(Windows) WSL2 사용 준비</strong> — 관리자 PowerShell에서 WSL2 사용 가능 상태.</span></label></li>
-        <li><label><input type="checkbox" data-persist="pre-tailscale"><span><strong>(선택) Tailscale 가입 + 로그인</strong> — 원격 대시보드를 쓸 때만. 안 쓰면 건너뜀.</span></label></li>
+    <!-- 경계 요약 + 동의 (전문은 아래 '사용 경계 전문' 펼침) -->
+    <div id="governance" class="quickbox">
+      <h3>먼저 3가지만 알아두세요</h3>
+      <ul class="boundary">
+        <li><strong>개인 PC에서, 업무 자료·환자정보 없이</strong> 쓰는 개인 학습용 도구입니다(회사 공식 배포물 아님).</li>
+        <li>Claude가 일일이 묻지 않고 스스로 진행하는 <strong>강력한 설정</strong>입니다. 위험 명령 차단 장치가 있지만 완전하지는 않습니다.</li>
+        <li><strong>본인 Claude 구독</strong>으로 로그인해서 씁니다. 입력 내용은 Anthropic에 전송됩니다.</li>
       </ul>
+      <label class="consent">
+        <input type="checkbox" id="consent-check">
+        <span>읽었습니다. <strong>개인 PC에서 비업무 용도로만</strong> 쓰겠습니다.</span>
+      </label>
+      <p class="consent-hint" id="consent-hint">체크하면 아래 다운로드 버튼이 활성화됩니다.</p>
+      <p class="muted" style="margin:.4em 0 0">자세한 경계는 아래 <a href="#full-governance">사용 경계 전문</a>에 있습니다.</p>
     </div>
 
-    <!-- 데모 영상 placeholder -->
-    <figure class="demo">
-      <div class="demo-ph" id="demo-ph">▶ 데모 영상 / GIF (배포 시 삽입)</div>
-      <figcaption>설치 전 과정을 1~2분 영상으로 보여줄 자리입니다.</figcaption>
-    </figure>
+    <!-- 큰 다운로드 버튼 — fail-closed: 동의 전 href=#downloads(표 폴백), 동의 시 JS가 data-href 주입 -->
+    <p class="cta-row">
+      <a id="dl-cta" class="btn-download locked" href="#downloads" aria-disabled="true"
+         data-href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Cockpit-Install.cmd" rel="nofollow">
+        ⬇ 설치 파일 받기 <span class="cta-sub">Cockpit-Install.cmd · Windows</span>
+      </a>
+    </p>
+    <p class="muted" style="text-align:center; margin-top:-.4em">이 파일은 코드서명이 없어 “알 수 없는 게시자” 경고가 뜰 수 있습니다.
+      반드시 이 페이지의 버튼으로 받으세요. 꼼꼼히 검증하려면 아래 <a href="#downloads">모든 파일·검증</a>.</p>
 
-    <!-- Windows 트랙 -->
-    <div class="track os-windows">
-      <h3>Windows — WSL2 경로</h3>
-      <p>Windows에서는 유닉스 자산을 <strong>별도 WSL2 배포판</strong>(기본 <code>cc-cockpit</code>)으로 가져와 거의 그대로 돌립니다(기존 Ubuntu를 건드리지 않음).</p>
-      <p class="status-pill status-ok">✅ 부트스트랩 준비됨 — <strong><code>Cockpit-Install.cmd</code> 하나를 받아 더블클릭</strong>하면 끝(<code>irm … | iex</code> 미사용 · 코드서명 없음 · 받은 ps1·이미지 해시 자동 대조).</p>
-      <ol class="steps">
-        <li>
-          <p><strong>0) (최초 1회) WSL2 준비</strong> — 관리자 PowerShell에서. 이미 돼 있으면 건너뜁니다. 부트스트랩이 미설치를 감지하면 이 명령을 안내하고 멈춥니다(스스로 권한을 올리지 않음).</p>
-          <div class="code" data-gated>
-            <button class="copy" type="button" aria-label="복사">복사</button>
-<pre><code>wsl --install --no-distribution
-wsl --update</code></pre>
-          </div>
-        </li>
-        <li>
-          <p><strong>1) <code>Cockpit-Install.cmd</code> 하나를 받아 더블클릭</strong>합니다(<a href="#downloads">아래 다운로드 표</a>). 파워쉘을 직접 입력할 필요가 없습니다 — 이 파일이 <code>Install-Cockpit.ps1</code>을 <strong>자동으로 내려받아 SHA-256을 대조</strong>하고, 일치할 때만 별도 배포판으로 import해 설치를 실행합니다(편의 설정 사전적용 · 외부 송신/자체호스팅 대시보드는 OFF). 중간에 실패하면 창이 즉시 닫히지 않고 이유를 보여줍니다.</p>
-          <p class="muted"><strong>보호 경고(SmartScreen)가 나올 수 있습니다.</strong> 이 배포본은 <strong>코드서명이 없어서(unsigned)</strong> Windows가 “알 수 없는 게시자” 경고를 띄울 수 있습니다 — <strong>[추가 정보] → [실행]</strong>으로 진행합니다(<code>.cmd</code> 첫 실행이 <code>.ps1</code>보다 경고가 부드럽다는 보장은 없습니다). <code>Get-AuthenticodeSignature</code>가 <code>NotSigned</code>로 나오는 것이 정상입니다(서명층 없음). <strong>자동 대조되는 것은 <code>.cmd</code>가 받아오는 <code>Install-Cockpit.ps1</code>과 그 스크립트가 받는 이미지</strong>(<code>cockpit-wsl.tar.gz</code>·import 전 대조, 불일치 시 삭제·중단)입니다 — 두 파일의 핀 해시가 <code>.cmd</code>/스크립트 안에 박혀 있습니다. <strong>단, <code>.cmd</code> 자체는 신뢰의 출발점이라 자동 검증되지 않습니다</strong>: <code>.cmd</code>가 변조되면 내장 핀 해시도 함께 변조될 수 있으므로(미서명+체크섬 정책의 구조적 한계), <strong><a href="#downloads">공식 다운로드 링크</a>에서 받고</strong>, 확실히 하려면 받은 <code>.cmd</code>의 <code>Get-FileHash</code> 값을 <strong>다운로드 표의 SHA-256과 직접 대조</strong>하세요(생략하면 다운로드 채널을 신뢰하는 셈).</p>
-          <p class="muted">설치기는 구형 WSL이면 <code>.tar</code>로 풀어 <strong>스스로 재시도</strong>하고, 그래도 안 되면 이유를 보여주며 멈춥니다(<strong>자동으로 다른 스크립트로 넘어가지 않습니다</strong>). 골든 이미지 경로가 맞지 않을 때 쓰는 <strong>대안 부트스트랩</strong>이 스테이지드(<code>Install-Cockpit-Staged.ps1</code>)입니다 — 공식 베이스 rootfs를 검증해 import 후 라이브 프로비저닝(<strong>직접 골라 실행</strong>). 통째 삭제는 <code>wsl --unregister cc-cockpit</code>. <strong>고급(수동)</strong>: <code>Install-Cockpit.ps1</code>을 직접 받아 <code>Get-FileHash … -Algorithm SHA256</code>로 위 표의 해시와 대조한 뒤 <code>powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-Cockpit.ps1</code>로 실행할 수도 있습니다.</p>
-        </li>
-        <li>
-          <p><strong>2) WSL(cc-cockpit) 안에서</strong> — 플러그인은 <strong>미리 설치</strong>돼 있어 실행할 셸 명령은 이것 하나입니다:</p>
-          <div class="code" data-gated>
-            <button class="copy" type="button" aria-label="복사">복사</button>
-<pre><code>claude</code></pre>
-          </div>
-          <p class="muted">이후는 <strong>Claude 화면 안에서 입력</strong>합니다(셸에 붙여넣지 마세요): ① <code>/login</code> → <strong>브라우저가 자동으로 열려</strong> OAuth 로그인(최초 1회 · 안 열리면 화면에 표시된 URL을 복사) ② <code>/exit</code> 후 <code>claude</code> 재실행 — <strong>로그인 후 한 번 재시작해야 claude.ai/code 원격조종이 활성</strong>됩니다 ③ <code>/cockpit-setup</code> → 거버넌스 동의 한 화면(원하면 <strong>세션 기록 대시보드 옵트인</strong> 스텝 포함). 구 이미지(v0.1.1 이하)는 ③ 전에 <code>/plugin marketplace add https://github.com/sidoyu/cockpit</code> → <code>/plugin install cockpit@cc-companion</code> 을 먼저 입력하세요.</p>
-        </li>
-      </ol>
-    </div>
+    <!-- 따라 하기 5단계 -->
+    <ol class="steps-big">
+      <li><strong>위 버튼을 눌러 파일을 받습니다.</strong></li>
+      <li><strong>받은 파일을 더블클릭합니다.</strong> 검은 창이 열리고 알아서 설치합니다(인터넷 필요 · 수 분 소요).
+        <span class="substep">파란 경고 창(“Windows의 PC 보호”)이 뜨면 <strong>[추가 정보] → [실행]</strong>을 누르세요.
+        경고 없이 바로 진행되는 PC도 있는데 둘 다 정상입니다.</span></li>
+      <li><strong>설치가 끝나면 바탕화면의 “Claude (cockpit)” 아이콘을 더블클릭합니다.</strong></li>
+      <li><strong>검은 창에 <code>/login</code> 을 입력하고 Enter.</strong> 브라우저가 열리면 본인 Claude 계정으로 승인합니다.</li>
+      <li><strong>같은 창에 <code>/cockpit-setup</code> 을 입력합니다.</strong> 동의 확인과 세부 설정을 마법사가 안내합니다.
+        <span class="substep">휴대폰·claude.ai에서 이어 쓰는 원격 조종을 켜려면, 안내에 따라 창을 한 번 껐다 다시 켜면 됩니다. 끝입니다.</span></li>
+    </ol>
+    <p class="muted">팁: 추론 강도는 <code>/effort</code> 에서 <strong>xhigh</strong>를 고르세요(계정 한도에 따라 high로 남을 수 있고 그것도 정상).</p>
+  </div>
+</section>
 
-    <!-- macOS 트랙 -->
-    <div class="track os-macos">
-      <h3>macOS — 네이티브 경로</h3>
-      <p>macOS는 1차 레퍼런스 빌드입니다. 터미널에서 Claude Code를 열고 플러그인을 설치합니다.</p>
+<!-- ── 아래는 전부 '필요할 때만' 펼쳐 보는 상세 ───────────────────── -->
+<section class="band">
+  <div class="wrap">
+    <h2>더 알아보기</h2>
+
+    <details class="fold" id="what">
+      <summary>무엇이 깔리나</summary>
+      <div class="cards">
+        <div class="card"><h3>작업 규율(행동층)</h3><p>자율 진행 경계, 두 순간 자기점검, 읽기/검색 위생. 설치 마법사가 <code>~/.claude/CLAUDE.md</code>로 적용.</p></div>
+        <div class="card"><h3>메모리 시스템</h3><p>파일 기반(md + python 훅). 세션 시작 시 상태 주입, 종료 시 기억 후보 추출, 인덱스 자동 재생성. <strong>자동 추출(외부 송신)은 개인 API 키 옵트인</strong> — 마법사에서 등록하며 미등록 시 기억은 수동으로만 쌓입니다(키 사용량은 정액 구독과 별개로 과금, 콘솔에서 한도 설정 권장).</p></div>
+        <div class="card"><h3>안전망</h3><p>파괴/비가역 명령 금지목록(deny-list), 긴급정지(kill switch), 감사 로그.</p></div>
+        <div class="card"><h3>세션 기록 대시보드(선택)</h3><p>세션 로그를 <strong>이 PC의 브라우저 창</strong>으로 열람(바탕화면 <strong>'Cockpit Dashboard' 아이콘</strong> 또는 <code>Cockpit-Dashboard.cmd</code> 더블클릭 · 창 닫으면 꺼짐). <strong>기본 로컬 전용</strong>, 타기기 원격 열람은 고급·옵트인.</p></div>
+        <div class="card"><h3>설치 마법사</h3><p>기본 사용자·메모리 디렉터리·선택 기능을 안내하고 충돌 검사·dry-run·롤백을 제공.</p></div>
+      </div>
+    </details>
+
+    <details class="fold" id="troubleshoot">
+      <summary>문제가 생겼을 때</summary>
+      <ul class="boundary">
+        <li><strong>창에 “WSL 준비가 필요합니다” 안내가 나오면</strong> — 시작 메뉴에서 PowerShell을 찾아 <strong>우클릭 → 관리자 권한으로 실행</strong>한 뒤, <strong>창에 표시된 명령만 그대로 입력</strong>하고(다른 명령을 검색해 입력하지 마세요), 끝나면 다시 설치 파일을 더블클릭하세요. 설치기는 스스로 관리자 권한을 올리지 않습니다.</li>
+        <li><strong>빨간 글씨로 “배포판 'cc-cockpit' 이 이미 등록되어 있습니다”</strong> — 이미 설치된 PC입니다(안전장치가 막은 것·기존 설치 무사). 정말 처음부터 다시 깔려면 아래 <a href="#downloads">복구·재설치 <code>Cockpit-Repair.cmd</code></a>를 쓰세요 — <strong>배포판 안의 기억·설정이 지워집니다</strong>(이중 확인 후 진행).</li>
+        <li><strong>설치 중 실패</strong> — 창이 바로 닫히지 않고 이유를 보여줍니다. 대부분 인터넷 연결 문제이니 다시 실행해 보고, 안 되면 <strong>창에 보이는 화면을 사진으로 찍어</strong> 배포자에게 보내주세요.</li>
+        <li><strong>완전 제거</strong> — <a href="#downloads"><code>Cockpit-Uninstall.cmd</code></a> 더블클릭(cc-cockpit 배포판만 삭제 · 다른 WSL 배포판은 건드리지 않음).</li>
+      </ul>
+      <h3>점검·긴급 정지</h3>
+      <div class="cards">
+        <div class="card">
+          <h3>상태 점검</h3>
+          <p>Claude 창에 입력 — 설치 상태·원격 ON/OFF 확인:</p>
+          <div class="code"><button class="copy" type="button" aria-label="복사">복사</button><pre><code>/cockpit-doctor</code></pre></div>
+        </div>
+        <div class="card">
+          <h3>긴급 정지</h3>
+          <p>자동 진행을 즉시 멈춤(파일 하나 생성):</p>
+          <div class="code"><button class="copy" type="button" aria-label="복사">복사</button><pre><code>touch ~/.claude/CC_KILL_SWITCH</code></pre></div>
+        </div>
+        <div class="card">
+          <h3>원격 끄기</h3>
+          <p>먼저 미리보기, 그다음 실제 비활성화(<strong>설치된 플러그인 폴더에서 실행</strong>):</p>
+          <div class="code"><button class="copy" type="button" aria-label="복사">복사</button><pre><code>bash plugin/dashboard/disable-remote.sh
+bash plugin/dashboard/disable-remote.sh --apply</code></pre></div>
+          <p class="muted">경로가 안 맞으면 “file not found”가 납니다 — 정확한 절대경로는 <code>/cockpit-doctor</code>가 안내합니다.</p>
+        </div>
+      </div>
+      <p class="muted">플러그인만 제거하려면 <code>/plugin uninstall</code> + 설치 마법사의 롤백 안내. 자세한 절차는 거버넌스 문서 6장.</p>
+    </details>
+
+    <details class="fold" id="dashboard-local">
+      <summary>세션 기록 대시보드 켜기 (로컬 · 선택)</summary>
+      <p>설치 마법사에서 대시보드를 <strong>옵트인</strong>했다면(<code>/cockpit-setup</code>의 대시보드 스텝),
+        바탕화면의 <strong>'Cockpit Dashboard' 아이콘</strong>(설치기가 만들어 둠)이나 <code>Cockpit-Dashboard.cmd</code>를 <strong>더블클릭</strong>해
+        세션 기록을 이 PC의 브라우저 창으로 봅니다
+        (<a href="#downloads">아래 다운로드 표</a>). 서버 개념을 다룰 필요 없이, <strong>새로 켠 창을 닫으면 서버도 함께 꺼집니다</strong>(정확한 조건은 아래).</p>
+      <ul class="boundary">
+        <li><strong>이 PC 전용(로컬).</strong> 대시보드는 <code>127.0.0.1</code>에만 열려, 기본 설정에서는 다른 기기에서 접속되지 않습니다.</li>
+        <li><strong>세션 기록에는 민감한 내용이 담길 수 있습니다.</strong> 열람 창을 방치하지 말고, 끝나면 창을 닫으세요. 뷰어 idle-exit(무요청 시 자가 종료)가 백스톱입니다.</li>
+        <li><strong>종료 조건은 상황에 따라 다릅니다.</strong> ① <strong>Edge가 있고 이번에 새로 켠 경우</strong> — 전용 앱 창을 닫으면 서버도 종료(<code>.cmd</code>가 창 종료를 감지). ② <strong>이미 켜져 있던 서버</strong>를 다시 연 경우 — 이 창을 닫아도 서버는 안 꺼지니 <code>/cockpit-doctor</code>로 확인·종료. ③ <strong>Edge가 없으면</strong> 기본 브라우저로 열리고, 끝난 뒤 <code>.cmd</code> 창에서 안내대로 키를 눌러 종료합니다.</li>
+        <li>상태 확인·강제 끄기는 <code>/cockpit-doctor</code>가 안내합니다(<code>--app</code> 없이 일반 창으로 직접 열면 창 종료 감지가 안 되니 <code>.cmd</code>로만 여세요).</li>
+      </ul>
+      <p class="muted">폰·노트북 등 <strong>다른 기기에서</strong> 열람하려는 경우는 아래 <a href="#remote">원격 대시보드(고급·선택)</a>를 따르세요 — 위험도가 높아 기본 꺼짐입니다.</p>
+    </details>
+
+    <details class="fold" id="full-governance">
+      <summary>사용 경계 전문 (설치 전 권장)</summary>
+      <ul class="boundary">
+        <li><strong>권한 확인 생략(bypass) = 켜짐.</strong> Claude가 명령 실행 전 일일이 묻지 않고 진행합니다(대표적 파괴/비가역 명령은 금지목록으로 차단하지만 <strong>완전한 보호는 아닙니다</strong>).</li>
+        <li><strong>외부 송출.</strong> 입력 내용이 모델 응답을 위해 Anthropic에 전송되고, 일부 기능(메모리 자동 추출·선택적 대시보드 요약)은 추가 외부 송신을 수반할 수 있습니다.</li>
+        <li><strong>원격 대시보드 = 기본 꺼짐(opt-in).</strong> 켜면 개인 VPN 안의 다른 기기에서 호스트를 조종할 수 있습니다(가장 위험).</li>
+        <li><strong>개인 PC에서, 비업무·비민감 데이터로만.</strong> 환자정보·개인정보(PII)·기밀을 절대 입력하지 마세요.</li>
+        <li><strong>안전장치는 보조일 뿐</strong>이며 최종 책임은 사용자에게 있습니다. 회사 보안정책과 충돌하면 회사 정책이 우선합니다.</li>
+      </ul>
+      <p class="band-actions">
+        <a class="btn btn-ghost" href="https://github.com/sidoyu/cockpit/blob/main/GOVERNANCE.md">전체 거버넌스 문서 읽기 →</a>
+      </p>
+    </details>
+
+    <details class="fold" id="downloads">
+      <summary>모든 파일·검증 (고급)</summary>
+      <p class="muted"><strong>이 배포본은 코드서명이 없습니다(unsigned).</strong> 무결성은 <strong>SHA-256 체크섬 대조로만</strong> 보장됩니다 — 받은 파일은 실행 전 아래 체크섬과 반드시 대조하세요(이미지 SHA-256은 부트스트랩 스크립트에도 핀으로 박혀 import 전 자동 대조됩니다).</p>
+      <table class="dl">
+        <thead><tr><th>산출물</th><th>대상</th><th>링크</th><th>SHA-256 / 서명</th></tr></thead>
+        <tbody>
+          <tr><td><strong>원클릭 설치</strong></td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Cockpit-Install.cmd" rel="nofollow"><code>Cockpit-Install.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Install.cmd">SHA-256: d1acb3bfcc6202fca34268a726cce803c54e945c4a66d91e41e2d3c974d67041<br>(더블클릭 = ps1 자동 다운로드·해시 대조·실행)</code></td></tr>
+          <tr><td>세션 기록 대시보드</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Cockpit-Dashboard.cmd" rel="nofollow"><code>Cockpit-Dashboard.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Dashboard.cmd">SHA-256: 567174419ad280a239f9bbc6fe12d4a39a3f8fddac7702689e61151e476eaab7<br>(더블클릭 = 로컬 창 열람·창 닫으면 종료)</code></td></tr>
+          <tr><td>복구·재설치(문제 발생 시)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Cockpit-Repair.cmd" rel="nofollow"><code>Cockpit-Repair.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Repair.cmd">SHA-256: b4d3d352de1ae1cc67620d6e6f338ef4b23c5d109fed2975ebef8611e7138966<br>(더블클릭 = 재설치 · 배포판 내부 기억·설정·로그 소실 · 재입력 확인)</code></td></tr>
+          <tr><td>완전 제거</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Cockpit-Uninstall.cmd" rel="nofollow"><code>Cockpit-Uninstall.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Uninstall.cmd">SHA-256: 377ff85cf071e5da2e454e8c46feb01a129059844a1a5672ca363662a5be82ed<br>(더블클릭 = cc-cockpit 배포판만 삭제 · 타 배포판 미접촉)</code></td></tr>
+          <tr><td>WSL2 배포판 이미지</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/cockpit-wsl.tar.gz" rel="nofollow">cockpit-wsl.tar.gz</a></td><td><code class="cksum">SHA-256: 86d0e50400c6a97f1264811bf958c1a7f8cefa0eb6718d722b134a4bdf246a23<br>(부트스트랩이 import 전 자동 대조)</code></td></tr>
+          <tr><td>PowerShell 부트스트랩</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Install-Cockpit.ps1" rel="nofollow">Install-Cockpit.ps1</a></td><td><code class="cksum">SHA-256: 940d3e699254e0051b7d2d0c7b5736b4d3d91b3656e19bf4176e261f9c7b3284<br>(서명 없음 — Get-FileHash 로 대조)</code></td></tr>
+          <tr><td>부트스트랩(스테이지드 폴백)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Install-Cockpit-Staged.ps1" rel="nofollow">Install-Cockpit-Staged.ps1</a></td><td><code class="cksum">SHA-256: 905a6c19bf9dcb1d210852c01ad21beb881f9ff472eae56a650517ccc923c708<br>(서명 없음)</code></td></tr>
+          <tr><td>이미지 출처(provenance)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/provenance.json" rel="nofollow">provenance.json</a></td><td><code class="cksum">— 베이스 digest·SBOM·빌드로그</code></td></tr>
+          <tr><td>플러그인(행동층)</td><td>공통</td><td><a href="https://github.com/sidoyu/cockpit" rel="nofollow">cockpit@cc-companion</a></td><td><code class="cksum">— (마켓플레이스)</code></td></tr>
+        </tbody>
+      </table>
+      <p class="muted"><strong>일반 사용자는 <code>Cockpit-Install.cmd</code> 하나만</strong> 받으면 되고, 나머지 자산(ps1·이미지·스테이지드 폴백·provenance)은 설치기가 자동으로 받아 검증합니다 — 위 표의 개별 링크는 “고급(수동)” 경로용입니다.</p>
+      <h3>미서명 배포와 검증에 대해 (정직 고지)</h3>
+      <p class="muted">이 배포본은 <strong>코드서명이 없어서(unsigned)</strong> Windows가 “알 수 없는 게시자” 경고를 띄울 수 있습니다(<code>Get-AuthenticodeSignature</code>가 <code>NotSigned</code>로 나오는 것이 정상 · <code>.cmd</code> 첫 실행이 <code>.ps1</code>보다 경고가 부드럽다는 보장은 없습니다). <strong>자동 대조되는 것은 <code>.cmd</code>가 받아오는 <code>Install-Cockpit.ps1</code>과 그 스크립트가 받는 이미지</strong>(<code>cockpit-wsl.tar.gz</code>·import 전 대조, 불일치 시 삭제·중단)입니다 — 두 파일의 핀 해시가 <code>.cmd</code>/스크립트 안에 박혀 있습니다. <strong>단, <code>.cmd</code> 자체는 신뢰의 출발점이라 자동 검증되지 않습니다</strong>: <code>.cmd</code>가 변조되면 내장 핀 해시도 함께 변조될 수 있으므로(미서명+체크섬 정책의 구조적 한계), 공식 다운로드 링크에서 받고, 확실히 하려면 받은 <code>.cmd</code>의 <code>Get-FileHash</code> 값을 <strong>위 표의 SHA-256과 직접 대조</strong>하세요(생략하면 다운로드 채널을 신뢰하는 셈).</p>
+      <p class="muted">설치기는 구형 WSL이면 <code>.tar</code>로 풀어 <strong>스스로 재시도</strong>하고, 그래도 안 되면 이유를 보여주며 멈춥니다(<strong>자동으로 다른 스크립트로 넘어가지 않습니다</strong>). 골든 이미지 경로가 맞지 않을 때 쓰는 <strong>대안 부트스트랩</strong>이 스테이지드(<code>Install-Cockpit-Staged.ps1</code>)입니다 — 공식 베이스 rootfs를 검증해 import 후 라이브 프로비저닝(<strong>직접 골라 실행</strong>). <strong>고급(수동)</strong>: <code>Install-Cockpit.ps1</code>을 직접 받아 <code>Get-FileHash … -Algorithm SHA256</code>로 위 표의 해시와 대조한 뒤 <code>powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-Cockpit.ps1</code>로 실행할 수도 있습니다.</p>
+    </details>
+
+    <details class="fold" id="remote">
+      <summary>원격 대시보드 (고급 · 선택 · 기본 꺼짐)</summary>
+      <p>휴대폰·노트북 등 <strong>같은 개인 VPN(예: Tailscale)에 묶인 다른 기기</strong>에서 세션 로그를 보거나
+        세션을 조종하는 선택 기능입니다. 이 패키지에서 <strong>가장 위험한 기능</strong>이라 기본은 꺼짐입니다.</p>
+      <p class="muted"><strong>이 PC에서 보기만</strong> 원하면 위 <a href="#dashboard-local">세션 기록 대시보드 켜기(로컬)</a>로 충분합니다 —
+        이 절은 <strong>다른 기기에서</strong> 여는 고급 설정으로, 기본 <code>127.0.0.1</code> 대신 개인 VPN 대역(<code>0.0.0.0</code>+allowlist)에 노출하는 경우에만 해당합니다.</p>
+      <div class="callout callout-danger">
+        <h3>⚠️ 켜기 전 필수 — 접근 통제(allowlist) 확인</h3>
+        <p>보안은 뷰어 서버가 <strong>요청자 IP를 검사해 localhost + 개인 VPN 대역만 허용하고 나머지는 403으로 거부</strong>하는
+          allowlist에 달려 있습니다. 이 allowlist는 <strong>뷰어(별도 공개 repo)가 구현·제공하는 속성</strong>이며
+          이 패키지가 강제하지 못합니다.</p>
+        <p>이 IP allowlist·CSRF 가드는 공개 뷰어 <code>claude-session-dashboard</code>
+          <strong><code>d4482d5</code>(2026-06-23) 이상에 반영</strong>돼 있습니다. 권장 핀
+          <strong><code>9f2bdba</code>(2026-07-03) 이상</strong>은 기본 bind가 <code>127.0.0.1</code>(이 PC 전용)이라
+          직접 <code>0.0.0.0</code>을 설정하기 전에는 원격 노출 자체가 없습니다. 그 이전 커밋을 고정했거나
+          오설치된 경우엔 없을 수 있고, allowlist 없는 뷰어로 원격을 켜면 그 즉시 <strong>인증 없는 공개 HTTP</strong>가 됩니다.
+          따라서 버전과 무관하게 <strong>아래 자가검증으로 직접 확인한 뒤에만</strong> 원격을 켜세요.</p>
+        <p class="selftest"><strong>자가검증 (켜기 전 필수):</strong>
+          <strong>같은 Wi-Fi/LAN에 있지만 VPN(Tailscale)은 끈 기기</strong>의 브라우저로
+          <code>http://&lt;호스트의 LAN IP&gt;:포트/</code>에 접속합니다.
+          <strong>명시적 <code>403 Forbidden</code> 으로 거부되어야 정상</strong>입니다(allowlist 동작).
+          화면이 그대로 보이면 allowlist가 없는 것이므로 <strong>즉시 끄세요</strong>.
+          <br>⚠️ <strong>접속 시간초과·연결거부·“페이지 없음”은 검증이 아닙니다</strong> — NAT·라우팅 때문일 수 있어
+          allowlist 동작을 증명하지 못합니다(“안 열리니 안전”으로 오판 금지). 반드시 <strong>같은 LAN의 LAN IP에서 403</strong>을 직접 확인하세요.
+          추가로 <strong>VPN에 접속한 기기</strong>에서 <code>http://&lt;호스트 VPN IP&gt;:포트/</code>가 정상으로 열리는지도 확인합니다.</p>
+        <ul>
+          <li><strong>절대 금지:</strong> 라우터 포트포워딩, Tailscale Funnel/Serve 공개, 클라우드 방화벽 인바운드 개방.</li>
+          <li>끄기(설치된 플러그인 폴더에서; 경로는 <code>/cockpit-doctor</code>가 안내): <code>bash plugin/dashboard/disable-remote.sh --apply</code></li>
+        </ul>
+        <p class="band-actions"><a class="btn btn-ghost" href="https://github.com/sidoyu/cockpit/blob/main/plugin/dashboard/README.md">원격 대시보드 상세 문서 →</a></p>
+      </div>
+    </details>
+
+    <details class="fold" id="macos">
+      <summary>macOS에서 쓰기 (참고)</summary>
+      <p>macOS는 1차 레퍼런스 빌드입니다. 터미널에서 Claude Code를 열고 플러그인을 설치합니다(Claude Code 설치·로그인이 먼저 필요).</p>
       <ol class="steps">
         <li>
           <p><strong>1) Claude Code</strong>를 열고(터미널에서 <code>claude</code>) cockpit 플러그인 추가·설치:</p>
@@ -141,121 +218,18 @@ wsl --update</code></pre>
           </div>
         </li>
       </ol>
-    </div>
-  </div>
-</section>
+    </details>
 
-<!-- ── 3. 설치 후 ─────────────────────────────────────────────────── -->
-<section id="post" class="band">
-  <div class="wrap">
-    <h2>설치 후 — 점검·끄기·지우기</h2>
-    <div class="cards">
-      <div class="card">
-        <h3>상태 점검</h3>
-        <p>언제든 설치 상태·원격 ON/OFF를 확인:</p>
-        <div class="code"><button class="copy" type="button" aria-label="복사">복사</button><pre><code>/cockpit-doctor</code></pre></div>
-      </div>
-      <div class="card">
-        <h3>긴급 정지</h3>
-        <p>자동 진행을 즉시 멈춤(파일 하나 생성):</p>
-        <div class="code"><button class="copy" type="button" aria-label="복사">복사</button><pre><code>touch ~/.claude/CC_KILL_SWITCH</code></pre></div>
-      </div>
-      <div class="card">
-        <h3>원격 끄기</h3>
-        <p>먼저 미리보기, 그다음 실제 비활성화(<strong>설치된 플러그인 폴더에서 실행</strong>):</p>
-        <div class="code"><button class="copy" type="button" aria-label="복사">복사</button><pre><code>bash plugin/dashboard/disable-remote.sh
-bash plugin/dashboard/disable-remote.sh --apply</code></pre></div>
-        <p class="muted">경로가 안 맞으면 “file not found”가 납니다 — 정확한 절대경로는 <code>/cockpit-doctor</code>가 안내합니다.</p>
-      </div>
-    </div>
-    <p class="muted">전체 제거는 <code>/plugin uninstall</code> + 설치 마법사의 롤백 안내를 사용합니다. 자세한 절차는 거버넌스 문서 6장.</p>
-  </div>
-</section>
-
-<!-- ── 3.5 세션 기록 대시보드 켜기(로컬) ──────────────────────────── -->
-<section id="dashboard-local" class="band">
-  <div class="wrap">
-    <h2>세션 기록 대시보드 켜기 (로컬)</h2>
-    <p>설치 마법사에서 대시보드를 <strong>옵트인</strong>했다면(<code>/cockpit-setup</code>의 대시보드 스텝),
-      <code>Cockpit-Dashboard.cmd</code>를 <strong>더블클릭</strong>해 세션 기록을 이 PC의 브라우저 창으로 봅니다
-      (<a href="#downloads">아래 다운로드 표</a>). 서버 개념을 다룰 필요 없이, <strong>새로 켠 창을 닫으면 서버도 함께 꺼집니다</strong>(정확한 조건은 아래).</p>
-    <ul class="boundary">
-      <li><strong>이 PC 전용(로컬).</strong> 대시보드는 <code>127.0.0.1</code>에만 열려, 기본 설정에서는 다른 기기에서 접속되지 않습니다.</li>
-      <li><strong>세션 기록에는 민감한 내용이 담길 수 있습니다.</strong> 열람 창을 방치하지 말고, 끝나면 창을 닫으세요. 뷰어 idle-exit(무요청 시 자가 종료)가 백스톱입니다.</li>
-      <li><strong>종료 조건은 상황에 따라 다릅니다.</strong> ① <strong>Edge가 있고 이번에 새로 켠 경우</strong> — 전용 앱 창을 닫으면 서버도 종료(<code>.cmd</code>가 창 종료를 감지). ② <strong>이미 켜져 있던 서버</strong>를 다시 연 경우 — 이 창을 닫아도 서버는 안 꺼지니 <code>/cockpit-doctor</code>로 확인·종료. ③ <strong>Edge가 없으면</strong> 기본 브라우저로 열리고, 끝난 뒤 <code>.cmd</code> 창에서 안내대로 키를 눌러 종료합니다.</li>
-      <li>상태 확인·강제 끄기는 <code>/cockpit-doctor</code>가 안내합니다(<code>--app</code> 없이 일반 창으로 직접 열면 창 종료 감지가 안 되니 <code>.cmd</code>로만 여세요).</li>
-    </ul>
-    <p class="muted">폰·노트북 등 <strong>다른 기기에서</strong> 열람하려는 경우는 아래 <a href="#remote">원격 대시보드(고급·선택)</a>를 따르세요 — 위험도가 높아 기본 꺼짐입니다.</p>
-  </div>
-</section>
-
-<!-- ── 4. 다운로드 ────────────────────────────────────────────────── -->
-<section id="downloads" class="band">
-  <div class="wrap">
-    <h2>다운로드</h2>
-    <p class="muted"><strong>이 배포본은 코드서명이 없습니다(unsigned).</strong> 무결성은 <strong>SHA-256 체크섬 대조로만</strong> 보장됩니다 — 받은 파일은 실행 전 아래 체크섬과 반드시 대조하세요(이미지 SHA-256은 부트스트랩 스크립트에도 핀으로 박혀 import 전 자동 대조됩니다).</p>
-    <table class="dl">
-      <thead><tr><th>산출물</th><th>대상</th><th>링크</th><th>SHA-256 / 서명</th></tr></thead>
-      <tbody>
-        <tr><td><strong>원클릭 설치</strong></td><td>Windows</td><td><code>Cockpit-Install.cmd</code></td><td><code class="cksum" data-artifact="Cockpit-Install.cmd">SHA-256: 4eee85535a39e62254f7f3e6a5783f2922ae0b86d172d65cfd9612aee9f651c2<br>(더블클릭 = ps1 자동 다운로드·해시 대조·실행)</code></td></tr>
-        <tr><td>세션 기록 대시보드</td><td>Windows</td><td><code>Cockpit-Dashboard.cmd</code></td><td><code class="cksum" data-artifact="Cockpit-Dashboard.cmd">SHA-256: 567174419ad280a239f9bbc6fe12d4a39a3f8fddac7702689e61151e476eaab7<br>(더블클릭 = 로컬 창 열람·창 닫으면 종료)</code></td></tr>
-        <tr><td>복구·재설치(문제 발생 시)</td><td>Windows</td><td><code>Cockpit-Repair.cmd</code></td><td><code class="cksum" data-artifact="Cockpit-Repair.cmd">SHA-256: 7d5f0cfb5ec628329a528739227ae1e7d2f3c41b126c1b9c1cfed34036b79b64<br>(더블클릭 = 재설치 · 배포판 내부 기억·설정·로그 소실 · 재입력 확인)</code></td></tr>
-        <tr><td>완전 제거</td><td>Windows</td><td><code>Cockpit-Uninstall.cmd</code></td><td><code class="cksum" data-artifact="Cockpit-Uninstall.cmd">SHA-256: 377ff85cf071e5da2e454e8c46feb01a129059844a1a5672ca363662a5be82ed<br>(더블클릭 = cc-cockpit 배포판만 삭제 · 타 배포판 미접촉)</code></td></tr>
-        <tr><td>WSL2 배포판 이미지</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.3/cockpit-wsl.tar.gz" rel="nofollow">cockpit-wsl.tar.gz</a></td><td><code class="cksum">SHA-256: cf7da75eccc7c6f42acada446a8e1fbda890a5744f28ea3375b3eecafa2a978b<br>(부트스트랩이 import 전 자동 대조)</code></td></tr>
-        <tr><td>PowerShell 부트스트랩</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.3/Install-Cockpit.ps1" rel="nofollow">Install-Cockpit.ps1</a></td><td><code class="cksum">SHA-256: bfa14bda0dbcc7fe6c089ff69788bf6fafe1bd131fec9c830354479de540ebcf<br>(서명 없음 — Get-FileHash 로 대조)</code></td></tr>
-        <tr><td>부트스트랩(스테이지드 폴백)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.3/Install-Cockpit-Staged.ps1" rel="nofollow">Install-Cockpit-Staged.ps1</a></td><td><code class="cksum">SHA-256: 4621afeef964b5f3f52017d2c2c0fdfcd70333df4e7f2deaa55deb522a8882fc<br>(서명 없음)</code></td></tr>
-        <tr><td>이미지 출처(provenance)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.3/provenance.json" rel="nofollow">provenance.json</a></td><td><code class="cksum">— 베이스 digest·SBOM·빌드로그</code></td></tr>
-        <tr><td>플러그인(행동층)</td><td>공통</td><td><a href="https://github.com/sidoyu/cockpit" rel="nofollow">cockpit@cc-companion</a></td><td><code class="cksum">— (마켓플레이스)</code></td></tr>
-      </tbody>
-    </table>
-    <p class="muted"><strong>일반 사용자는 <code>Cockpit-Install.cmd</code> 하나만</strong> 받으면 되고, 나머지 자산(ps1·이미지·스테이지드 폴백·provenance)은 설치기가 자동으로 받아 검증합니다 — 위 표의 개별 링크는 “고급(수동)” 경로용입니다.</p>
-  </div>
-</section>
-
-<!-- ── 5. 원격 대시보드(고급·선택) ────────────────────────────────── -->
-<section id="remote" class="band band-warn">
-  <div class="wrap">
-    <h2>원격 대시보드 (고급 · 선택 · 기본 꺼짐)</h2>
-    <p>휴대폰·노트북 등 <strong>같은 개인 VPN(예: Tailscale)에 묶인 다른 기기</strong>에서 세션 로그를 보거나
-      세션을 조종하는 선택 기능입니다. 이 패키지에서 <strong>가장 위험한 기능</strong>이라 기본은 꺼짐입니다.</p>
-    <p class="muted"><strong>이 PC에서 보기만</strong> 원하면 위 <a href="#dashboard-local">세션 기록 대시보드 켜기(로컬)</a>로 충분합니다 —
-      이 절은 <strong>다른 기기에서</strong> 여는 고급 설정으로, 기본 <code>127.0.0.1</code> 대신 개인 VPN 대역(<code>0.0.0.0</code>+allowlist)에 노출하는 경우에만 해당합니다.</p>
-
-    <div class="callout callout-danger">
-      <h3>⚠️ 켜기 전 필수 — 접근 통제(allowlist) 확인</h3>
-      <p>보안은 뷰어 서버가 <strong>요청자 IP를 검사해 localhost + 개인 VPN 대역만 허용하고 나머지는 403으로 거부</strong>하는
-        allowlist에 달려 있습니다. 이 allowlist는 <strong>뷰어(별도 공개 repo)가 구현·제공하는 속성</strong>이며
-        이 패키지가 강제하지 못합니다.</p>
-      <p>이 IP allowlist·CSRF 가드는 공개 뷰어 <code>claude-session-dashboard</code>
-        <strong><code>d4482d5</code>(2026-06-23) 이상에 반영</strong>돼 있습니다. 권장 핀
-        <strong><code>9f2bdba</code>(2026-07-03) 이상</strong>은 기본 bind가 <code>127.0.0.1</code>(이 PC 전용)이라
-        직접 <code>0.0.0.0</code>을 설정하기 전에는 원격 노출 자체가 없습니다. 그 이전 커밋을 고정했거나
-        오설치된 경우엔 없을 수 있고, allowlist 없는 뷰어로 원격을 켜면 그 즉시 <strong>인증 없는 공개 HTTP</strong>가 됩니다.
-        따라서 버전과 무관하게 <strong>아래 자가검증으로 직접 확인한 뒤에만</strong> 원격을 켜세요.</p>
-      <p class="selftest"><strong>자가검증 (켜기 전 필수):</strong>
-        <strong>같은 Wi-Fi/LAN에 있지만 VPN(Tailscale)은 끈 기기</strong>의 브라우저로
-        <code>http://&lt;호스트의 LAN IP&gt;:포트/</code>에 접속합니다.
-        <strong>명시적 <code>403 Forbidden</code> 으로 거부되어야 정상</strong>입니다(allowlist 동작).
-        화면이 그대로 보이면 allowlist가 없는 것이므로 <strong>즉시 끄세요</strong>.
-        <br>⚠️ <strong>접속 시간초과·연결거부·“페이지 없음”은 검증이 아닙니다</strong> — NAT·라우팅 때문일 수 있어
-        allowlist 동작을 증명하지 못합니다(“안 열리니 안전”으로 오판 금지). 반드시 <strong>같은 LAN의 LAN IP에서 403</strong>을 직접 확인하세요.
-        추가로 <strong>VPN에 접속한 기기</strong>에서 <code>http://&lt;호스트 VPN IP&gt;:포트/</code>가 정상으로 열리는지도 확인합니다.</p>
-      <ul>
-        <li><strong>절대 금지:</strong> 라우터 포트포워딩, Tailscale Funnel/Serve 공개, 클라우드 방화벽 인바운드 개방.</li>
-        <li>끄기(설치된 플러그인 폴더에서; 경로는 <code>/cockpit-doctor</code>가 안내): <code>bash plugin/dashboard/disable-remote.sh --apply</code></li>
-      </ul>
-      <p class="band-actions"><a class="btn btn-ghost" href="../plugin/dashboard/README.md">원격 대시보드 상세 문서 →</a></p>
-    </div>
   </div>
 </section>
 
 <footer class="site-footer">
   <div class="wrap">
-    <p>cc-companion · cockpit <span id="ver">v0.1.3</span> · 개인 학습용 도구(회사 공식 IT 배포물 아님).</p>
+    <p>cc-companion · cockpit <span id="ver">v0.1.5</span> · 개인 학습용 도구(회사 공식 IT 배포물 아님).</p>
     <p class="links">
-      <a href="../GOVERNANCE.md">거버넌스</a> ·
-      <a href="../README.md">패키지 README</a> ·
-      <a href="../plugin/dashboard/README.md">원격 대시보드</a>
+      <a href="https://github.com/sidoyu/cockpit/blob/main/GOVERNANCE.md">거버넌스</a> ·
+      <a href="https://github.com/sidoyu/cockpit/blob/main/README.md">패키지 README</a> ·
+      <a href="https://github.com/sidoyu/cockpit/blob/main/plugin/dashboard/README.md">원격 대시보드</a>
     </p>
   </div>
 </footer>

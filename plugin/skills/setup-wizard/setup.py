@@ -405,6 +405,10 @@ def doctor():
     else:
         _p(INFO, "기억·상태 백업 없음 — 재설치는 배포판 내부 기억을 지웁니다. 재설치 전 권장: "
                  "python3 %s/backup.py (위치=CC_BACKUP_DIR, WSL 은 재설치 생존 위해 /mnt/c/... 권장)" % MEM_HOOKS)
+    # 재설치 직후(기억 저장소 비었음) + 백업 발견 → 자동 복원 경로 안내(마법사 1.5단계).
+    if not _dir_nonempty(MEMORY_DIR):
+        _p(INFO, "기억 저장소가 비어 있습니다 — 재설치라면 이전 백업 복원 가능: "
+                 "python3 %s/backup.py --scan → --restore --apply (기본 dry-run·기존 데이터는 .pre-restore 로 보존)" % MEM_HOOKS)
     _p(INFO, "메모리 유지보수(수동·report-only): %s 의 diet_suggest·freshness_check·read_report·"
              "build_archive_index·rotate_intent_log" % MEM_HOOKS)
 

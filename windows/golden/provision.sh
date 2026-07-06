@@ -103,11 +103,21 @@ visudo -cf "/etc/sudoers.d/90-cockpit" >/dev/null || die "sudoers 검증 실패"
 USER_HOME="$(getent passwd "$COCKPIT_USER" | cut -d: -f6)"
 [ -n "$USER_HOME" ] && [ -d "$USER_HOME" ] || die "사용자 홈을 찾지 못함: $COCKPIT_USER"
 
-# ── 3) /etc/wsl.conf (기본 사용자·systemd·상호운용) ────────────────
+# Windows 드라이브 automount(/mnt/c 등) 소유 uid/gid = 이 사용자의 실제 uid/gid 에 맞춘다.
+# base 이미지에 ubuntu(1000)가 있으면 useradd 로 만든 cockpit 은 1001 이 되므로, wsl.conf 의
+# automount uid=1000 하드코딩은 cockpit(1001)의 /mnt/c 쓰기를 막는다(실기 발견: 재설치 생존용
+# /mnt/c 백업이 Permission denied). → automount uid/gid 를 실제 사용자에 정렬해 원천 해소.
+COCKPIT_UID="$(id -u -- "$COCKPIT_USER")"
+COCKPIT_GID="$(id -g -- "$COCKPIT_USER")"
+
+# ── 3) /etc/wsl.conf (기본 사용자·systemd·상호운용·automount uid 정렬) ────────────────
 log "3) /etc/wsl.conf 적용"
 if [ -f "$(dirname "$0")/wsl.conf" ]; then
-  # 빌더가 같은 디렉터리에 wsl.conf 를 둔 경우 그대로, 사용자명만 치환.
-  sed "s/__COCKPIT_USER__/$COCKPIT_USER/g" "$(dirname "$0")/wsl.conf" > /etc/wsl.conf
+  # 빌더가 같은 디렉터리에 wsl.conf 를 둔 경우 그대로, 사용자명·uid·gid 치환.
+  sed -e "s/__COCKPIT_USER__/$COCKPIT_USER/g" \
+      -e "s/__COCKPIT_UID__/$COCKPIT_UID/g" \
+      -e "s/__COCKPIT_GID__/$COCKPIT_GID/g" \
+      "$(dirname "$0")/wsl.conf" > /etc/wsl.conf
 else
   cat > /etc/wsl.conf <<EOF
 [user]
@@ -117,6 +127,9 @@ systemd=true
 [interop]
 enabled=true
 appendWindowsPath=false
+[automount]
+enabled=true
+options=metadata,uid=$COCKPIT_UID,gid=$COCKPIT_GID,umask=022
 EOF
 fi
 chmod 0644 /etc/wsl.conf

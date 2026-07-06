@@ -51,9 +51,11 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ── 게시 시 치환되는 핀 고정값(빌드/릴리스 파이프라인이 채움) ──────────────
-$PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.3/cockpit-wsl.tar.gz'
-$PinnedSha256   = 'cf7da75eccc7c6f42acada446a8e1fbda890a5744f28ea3375b3eecafa2a978b'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
+$PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.5/cockpit-wsl.tar.gz'
+$PinnedSha256   = '86d0e50400c6a97f1264811bf958c1a7f8cefa0eb6718d722b134a4bdf246a23'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
 $MarketplaceUrl = 'https://github.com/sidoyu/cockpit'                                  # /plugin marketplace add 실주소(게시자 sidoyu·cc-companion).
+$PinnedDashboardCmdUrl    = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Cockpit-Dashboard.cmd'
+$PinnedDashboardCmdSha256 = '567174419ad280a239f9bbc6fe12d4a39a3f8fddac7702689e61151e476eaab7'   # Cockpit-Dashboard.cmd SHA-256 (repo 파일 그대로 자산 업로드 — publish-gate §1d 가 재핀 강제).
 $PLACEHOLDER_HOSTS = @('example.invalid')
 
 function Info($m){ Write-Host "[cockpit] $m" }
@@ -267,13 +269,72 @@ function New-CockpitLauncher {
   return $cmdPath
 }
 
+# ── 10b) 대시보드 바탕화면 아이콘(선택 부속 · 실패해도 설치는 계속) ─────────
+# 더블클릭 = 대시보드 창 열림, 창 닫으면 서버도 꺼짐(Cockpit-Dashboard.cmd 의 창-수명 그대로).
+# 뷰어를 아직 옵트인하지 않았어도 아이콘은 정직하게 안내한다(.cmd 의 NOT_INSTALLED 경로:
+# "/cockpit-setup 에서 대시보드 스텝 옵트인" 메시지). 자산은 릴리스에서 받고 핀 해시로 검증.
+function New-DashboardLauncher {
+  param([string]$Distro)
+  if ($Distro -ne 'cc-cockpit') {
+    Warn "대시보드 아이콘 생략 — Cockpit-Dashboard.cmd 는 기본 배포판(cc-cockpit) 전용입니다(파일 상단 DISTRO 수동 편집으로 사용 가능)."
+    return $null
+  }
+  if ($PinnedDashboardCmdSha256 -notmatch '^[0-9A-Fa-f]{64}$') {
+    Warn "대시보드 런처 핀 미설정(미발행 미리보기) — 아이콘 생성 생략."
+    return $null
+  }
+  $dUri = $null
+  if (-not [Uri]::TryCreate($PinnedDashboardCmdUrl, [UriKind]::Absolute, [ref]$dUri) -or
+      $dUri.Scheme -ne 'https' -or ($PLACEHOLDER_HOSTS -contains $dUri.Host)) {
+    Warn "대시보드 런처 URL 이 유효한 https 가 아님 — 아이콘 생성 생략."
+    return $null
+  }
+  $cockpitDir = Join-Path $env:LOCALAPPDATA 'Cockpit'
+  if (-not (Test-Path $cockpitDir)) { New-Item -ItemType Directory -Path $cockpitDir -Force | Out-Null }
+  $dashCmd = Join-Path $cockpitDir 'Cockpit-Dashboard.cmd'
+
+  $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("cockpit-dash-" + [Guid]::NewGuid().ToString('N') + ".cmd")
+  try { Invoke-WebRequest -Uri $PinnedDashboardCmdUrl -OutFile $tmp -UseBasicParsing }
+  catch { Warn "대시보드 런처 다운로드 실패(설치는 계속 — 릴리스 페이지에서 직접 받아도 됩니다): $($_.Exception.Message)"; return $null }
+  $dActual = (Get-FileHash -Path $tmp -Algorithm SHA256).Hash.ToLower()
+  if ($dActual -ne $PinnedDashboardCmdSha256.ToLower()) {
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+    Warn "대시보드 런처 체크섬 불일치 — 아이콘 생성 생략(이미지 설치와 무관). 기대=$($PinnedDashboardCmdSha256.ToLower()) 실제=$dActual"
+    return $null
+  }
+  Move-Item $tmp $dashCmd -Force
+  Info "대시보드 런처 설치: $dashCmd"
+
+  $iconPath = Join-Path $env:SystemRoot 'System32\wsl.exe'
+  try {
+    $ws = New-Object -ComObject WScript.Shell
+    foreach ($t in @(
+        (Join-Path ([Environment]::GetFolderPath('Programs')) 'Cockpit Dashboard.lnk'),
+        (Join-Path ([Environment]::GetFolderPath('Desktop'))  'Cockpit Dashboard.lnk'))) {
+      $sc = $ws.CreateShortcut($t)
+      $sc.TargetPath       = $dashCmd
+      $sc.WorkingDirectory = $cockpitDir
+      $sc.IconLocation     = "$iconPath,0"
+      $sc.Description      = 'Cockpit session dashboard (open = start, close window = stop)'
+      $sc.Save()
+      Info "바로가기 생성: $t"
+    }
+  } catch {
+    Warn "대시보드 바로가기 생성 일부 실패(.cmd 는 설치됨): $($_.Exception.Message)"
+  }
+  return $dashCmd
+}
+
 # ── 11) 안내 ──────────────────────────────────────────────────────────────
 Info "설치 완료 ✓  배포판 '$DistroName' 이 준비됐습니다(편의 설정 사전적용)."
 
 $LauncherCmd = $null
+$DashboardCmd = $null
 if (-not $NoLauncher) {
   try { $LauncherCmd = New-CockpitLauncher -Distro $DistroName }
   catch { Warn "런처 생성 실패(수동 진입 가능): $($_.Exception.Message)" }
+  try { $DashboardCmd = New-DashboardLauncher -Distro $DistroName }
+  catch { Warn "대시보드 아이콘 생성 실패(설치는 정상): $($_.Exception.Message)" }
 }
 
 Write-Host ""
@@ -282,6 +343,9 @@ if ($LauncherCmd) {
   Write-Host "  • 바탕화면/시작메뉴의 'Claude (cockpit)' 더블클릭 → claude 가 바로 실행됩니다."
 } else {
   Write-Host "  • 진입:  wsl -d $DistroName"
+}
+if ($DashboardCmd) {
+  Write-Host "  • 바탕화면 'Cockpit Dashboard' 더블클릭 → 세션 대시보드(선택 기능·/cockpit-setup 에서 옵트인 후 동작·창 닫으면 꺼짐)."
 }
 Write-Host "  1) claude 로그인(최초 1회, 브라우저 OAuth): 실행 후 /login"
 Write-Host "  2) 로그인 후 claude 재시작 → claude.ai/code 원격조종 활성(최초 실행은 미로그인이라 원격이 조용히 꺼져 있음)."
