@@ -360,6 +360,8 @@ def do_restore(args):
     print("\n복원 완료: 파일 %d개." % n_files)
     if moved:
         print("이전 상태는 .pre-restore-%s 경로에 보존됨(문제 시 이름을 되돌리면 원복)." % stamp)
+    print("메모리 추출 API 키는 백업에 포함되지 않습니다 — 자동추출(옵션 1) 사용자는 "
+          "setup.py set-extraction-key 로 재등록하세요(키 없으면 자동추출만 조용히 꺼져 있음).")
     print("새 세션을 시작하면 복원된 기억이 주입됩니다. 점검: setup.py doctor")
     return 0
 

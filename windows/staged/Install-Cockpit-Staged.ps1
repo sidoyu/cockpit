@@ -244,5 +244,6 @@ Write-Host "  2) 로그인 후 claude 재시작 → claude.ai/code 원격조종 
 Write-Host "  3) /plugin marketplace add $MarketplaceUrl"
 Write-Host "  4) /plugin install cockpit@cc-companion"
 Write-Host "  5) /cockpit-setup     # 거버넌스 동의 한 화면 + (원하면) 기억 외부송신 켜기"
+Write-Host "     (staged 경로는 설치기 온보딩 폼이 없습니다 — 골든 이미지 설치기 v0.1.8+ 전용. 온보딩은 위 /cockpit-setup 이 전담.)"
 Write-Host ""
 Write-Host "통째 삭제:  wsl --unregister $DistroName   # 다른 배포판은 안 건드림" -ForegroundColor Cyan

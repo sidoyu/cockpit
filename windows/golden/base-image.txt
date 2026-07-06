@@ -7,4 +7,4 @@
 #
 # 아래는 개발 빌드용 floating 태그(편의). publish-gate 는 @sha256: 핀이 아니면 발행을 차단한다
 # ($PinnedSha256 핀과 동일 철학 — 날조 금지, 배포자가 실제 digest 로 교체).
-ubuntu:24.04@sha256:786a8b558f7be160c6c8c4a54f9a57274f3b4fb1491cf65146521ae77ff1dc54
+ubuntu:24.04@sha256:52df9b1ee71626e0088f7d400d5c6b5f7bb916f8f0c82b474289a4ece6cf3faf

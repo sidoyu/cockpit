@@ -486,12 +486,83 @@ esac
 DASHBOARD
 chmod 0755 /usr/local/bin/cockpit-dashboard
 
+# ── 5.7) cockpit-onboard 브리지(설치기 온보딩 → 플러그인 도구) — 무조건 설치 ──
+# Windows 설치기(v0.1.8 온보딩 폼)가 WSL 안 플러그인 도구를 부를 **결정론적 절대경로**.
+# 플러그인 캐시 경로는 버전 의존(cache/cc-companion/cockpit/<VER>/)이라 설치기가 직접
+# glob 하면 인용·stale 캐시 위험 — 여기서 해석·검증 후 exec 한다(설계 §5.2·Codex 4f 누락4).
+# stdin 은 그대로 통과(set-extraction-key 의 키 stdin 주입 경로·C2). root 승격 없음(호출 사용자
+# 그대로 = wsl 기본 사용자). 존재만으로 어떤 외부송신·포트도 없다(egress OFF 불변식 무영향).
+log "5.7) cockpit-onboard 브리지 스크립트"
+cat > /usr/local/bin/cockpit-onboard <<'ONBOARD'
+#!/usr/bin/env bash
+# cockpit-onboard — 설치기(Install-Cockpit.ps1) ↔ 플러그인 브리지.
+#   cockpit-onboard setup <args...>    → python3 <plugin>/skills/setup-wizard/setup.py <args...>
+#   cockpit-onboard install-dashboard  → bash <plugin>/dashboard/install-viewer.sh
+# 플러그인 해석: ①installed_plugins.json 의 installPath ②plugin.json name==cockpit 검증
+# ③대상 스크립트 실재 확인 — 전부 통과해야 exec. 폴백 glob 은 최신 버전(sort -V) 1개만.
+# 키 원문을 다루지 않는다(있다면 stdin 통과분뿐) — echo/트레이스 금지, set -x 금지.
+set -u
+IP_JSON="$HOME/.claude/plugins/installed_plugins.json"
+CACHE_GLOB="$HOME/.claude/plugins/cache/cc-companion/cockpit"
+
+_die(){ echo "[cockpit-onboard] $1" >&2; exit "${2:-3}"; }
+
+_resolve_plugin(){
+  local p=""
+  if [ -f "$IP_JSON" ]; then
+    p="$(python3 - "$IP_JSON" 2>/dev/null <<'PY'
+import json, sys
+try:
+    entries = json.load(open(sys.argv[1]))["plugins"]["cockpit@cc-companion"]
+    print(entries[0].get("installPath", ""))
+except Exception:
+    pass
+PY
+)"
+  fi
+  # 폴백: 캐시 트리에서 최신 버전 1개(stale/깨진 installPath 대비 — 검증은 아래 공통)
+  if [ -z "$p" ] || [ ! -d "$p" ]; then
+    p="$(ls -d "$CACHE_GLOB"/*/ 2>/dev/null | sort -V | tail -1)"
+    p="${p%/}"
+  fi
+  [ -n "$p" ] && [ -d "$p" ] || _die "cockpit 플러그인을 찾지 못했습니다(사전설치 이미지가 아니거나 손상) — 첫 실행 /cockpit-setup 을 이용하세요."
+  # 정체성 검증: plugin.json name == cockpit (엉뚱한 트리 exec 방지)
+  python3 - "$p/.claude-plugin/plugin.json" 2>/dev/null <<'PY' || _die "플러그인 정체성 검증 실패($p) — 첫 실행 /cockpit-setup 을 이용하세요."
+import json, sys
+assert json.load(open(sys.argv[1]))["name"] == "cockpit"
+PY
+  printf '%s\n' "$p"
+}
+
+case "${1:-}" in
+  setup)
+    shift
+    PLUG="$(_resolve_plugin)" || exit 3
+    TOOL="$PLUG/skills/setup-wizard/setup.py"
+    [ -f "$TOOL" ] || _die "setup.py 가 없습니다: $TOOL"
+    exec python3 "$TOOL" "$@"
+    ;;
+  install-dashboard)
+    PLUG="$(_resolve_plugin)" || exit 3
+    TOOL="$PLUG/dashboard/install-viewer.sh"
+    [ -f "$TOOL" ] || _die "install-viewer.sh 가 없습니다: $TOOL"
+    exec bash "$TOOL"
+    ;;
+  *)
+    echo "usage: cockpit-onboard {setup <args...>|install-dashboard}" >&2
+    exit 2
+    ;;
+esac
+ONBOARD
+chmod 0755 /usr/local/bin/cockpit-onboard
+
 # ── 6) 첫 실행 안내문 ──────────────────────────────────────────────
 log "6) 첫 실행 안내(MOTD) 작성"
 # 플러그인 안내 = 베이크 여부에 따라 분기(4.5 판정). 베이크됐으면 2단계 안내를 쓰지 않는다(혼동 방지).
 if [ "$_plugins_baked" = "1" ]; then
   PLUGIN_STEPS="플러그인(cockpit@cc-companion v$_baked_pver)은 **미리 설치돼 있습니다** — 설치 단계 없음:
-  /cockpit-setup       # 거버넌스 동의 한 화면 + (원하면) 기억 외부송신 켜기"
+  /cockpit-setup       # 거버넌스 동의 한 화면 + (원하면) 기억 외부송신 켜기
+                       # (설치기 온보딩 폼에서 이미 답했다면 그 결정은 재질문 없이 넘어갑니다)"
 else
   PLUGIN_STEPS="플러그인 사용(사전설치 미포함 빌드 — 최초 1회만):
   /plugin marketplace add $COCKPIT_MARKETPLACE

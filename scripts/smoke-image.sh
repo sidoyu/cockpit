@@ -480,6 +480,69 @@ _baked_viewer=$(find "$ROOTFS"/usr/local/bin "$ROOTFS"/opt/cockpit -name 'active
 [ -z "$_baked_viewer" ] && OK "뷰어 본체 미베이크(reference-not-vendor 유지)" \
   || FAIL "뷰어 본체가 이미지에 구워짐:$(echo "$_baked_viewer" | sed "s|$ROOTFS||g" | tr '\n' ' ') — 옵트인 클론 원칙 위반"
 
+# ── 9b) cockpit-onboard 브리지(provision §5.7 무조건 설치·v0.1.8 설계 §7) ──
+# Windows 설치기 온보딩 폼의 WSL 진입점. 누락/후퇴 = 설치기 온보딩 전체 사일런트 fail-open.
+sec "9b) cockpit-onboard 브리지(설치기 온보딩)"
+CO="$ROOTFS/usr/local/bin/cockpit-onboard"
+if [ -f "$CO" ]; then
+  [ -x "$CO" ] && OK "cockpit-onboard 존재(+x)" || FAIL "cockpit-onboard 실행비트 없음 — chmod 회귀"
+  #  ① installed_plugins.json 우선 해석 + plugin.json 정체성 검증(stale/엉뚱 트리 exec 방지)
+  grep -qF 'installed_plugins.json' "$CO" && grep -qF '"cockpit"' "$CO" \
+    && OK "cockpit-onboard 플러그인 해석·정체성 검증 존재" \
+    || FAIL "cockpit-onboard 해석/정체성 검증 회귀 — stale 캐시 exec 위험"
+  #  ② 키 노출 금지 — xtrace 부재(stdin 통과 경로에 set -x 섞이면 키가 로그에 뜸). 주석 제외.
+  grep -vE '^[[:space:]]*#' "$CO" | grep -qE '(^|[[:space:]])set -x' \
+    && FAIL "cockpit-onboard 에 set -x — 키 stdin 경로 노출 위험" \
+    || OK "cockpit-onboard xtrace 없음(키 stdin 경로 안전)"
+  #  ③ 포워드 대상 2종(setup.py·install-viewer.sh) exec
+  grep -qF 'skills/setup-wizard/setup.py' "$CO" && grep -qF 'dashboard/install-viewer.sh' "$CO" \
+    && OK "cockpit-onboard 포워드 대상 2종 존재" \
+    || FAIL "cockpit-onboard 포워드 대상 회귀"
+else
+  FAIL "cockpit-onboard 없음 — provision §5.7 회귀(설치기 온보딩 전체 fail-open)"
+fi
+# 기능 왕복(호스트 실행 — setup.py 의 해당 경로는 순수 python·CC_* env 격리):
+#  apply-installer-onboarding(state 기록+동의 게이트) + set-extraction-key stdin(키 값이
+#  stdout/stderr 에 미출력 + 키 파일 0600). 검사 범위 주의: 여기는 stdin 경로의 무노출·권한만 —
+#  ps1 쪽 argv 금지 = publish-gate §1f(정적), 실 wsl 프로세스 /proc cmdline·env 부재 = Windows
+#  실기 매트릭스 소관(이 스모크는 rootfs 오프라인 검사라 실 프로세스가 없다).
+_SETUP_PY="$(ls -d "$ROOTFS"/home/*/.claude/plugins/cache/cc-companion/cockpit/*/skills/setup-wizard/setup.py 2>/dev/null | sort -V | tail -1 || true)"
+[ -n "$_SETUP_PY" ] || _SETUP_PY="$(ls "$ROOTFS"/opt/cockpit/plugin/skills/setup-wizard/setup.py 2>/dev/null | head -1 || true)"
+if [ -n "$_SETUP_PY" ] && command -v python3 >/dev/null 2>&1; then
+  _OTMP="$(mktemp -d)"
+  _orc=0
+  # ① 동의 없는 egress on = 거부(rc2·아무 파일도 미기록)
+  CC_STATE_DIR="$_OTMP/state" CC_MEMORY_DIR="$_OTMP/mem" CC_EXTRACTION_KEY_FILE="$_OTMP/key/extraction-key" \
+    python3 "$_SETUP_PY" apply-installer-onboarding --memory-egress on >/dev/null 2>&1 && _orc=1
+  [ ! -e "$_OTMP/state/setup_complete" ] || _orc=1
+  # ② 동의+egress on = state(스키마 v1)+마커 기록
+  CC_STATE_DIR="$_OTMP/state" CC_MEMORY_DIR="$_OTMP/mem" CC_EXTRACTION_KEY_FILE="$_OTMP/key/extraction-key" \
+    python3 "$_SETUP_PY" apply-installer-onboarding --memory-egress on --governance-ack --key-registered yes --dashboard installed >/dev/null 2>&1 || _orc=1
+  python3 - "$_OTMP/state/installer-onboarding.json" >/dev/null 2>&1 <<'PY' || _orc=1
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d["schema_version"] == 1 and d["source"] == "installer" and d["memory_egress"] is True
+PY
+  [ -f "$_OTMP/state/setup_complete" ] || _orc=1
+  [ "$_orc" -eq 0 ] && OK "apply-installer-onboarding 왕복(동의 게이트·state 스키마·마커)" \
+    || FAIL "apply-installer-onboarding 왕복 실패 — 동의 게이트/state 스키마/마커 회귀"
+  # ③ 키 stdin 왕복: 가짜 키가 출력에 안 뜨고 0600 파일로만 남는가
+  _fake="sk-ant-smoke-$(date +%s)-fake"
+  _kout="$(printf '%s\n' "$_fake" | CC_STATE_DIR="$_OTMP/state" CC_MEMORY_DIR="$_OTMP/mem" \
+    CC_EXTRACTION_KEY_FILE="$_OTMP/key/extraction-key" python3 "$_SETUP_PY" set-extraction-key 2>&1 || true)"
+  _krc=0
+  printf '%s' "$_kout" | grep -qF "$_fake" && _krc=1
+  [ "$(cat "$_OTMP/key/extraction-key" 2>/dev/null)" = "$_fake" ] || _krc=1
+  case "$(stat -c '%a' "$_OTMP/key/extraction-key" 2>/dev/null || stat -f '%Lp' "$_OTMP/key/extraction-key" 2>/dev/null)" in
+    600) : ;; *) _krc=1 ;;
+  esac
+  [ "$_krc" -eq 0 ] && OK "set-extraction-key stdin 왕복(출력 무노출·0600)" \
+    || FAIL "set-extraction-key stdin 왕복 실패 — 키 노출/권한/기록 회귀"
+  rm -rf "$_OTMP"
+else
+  WARN "setup.py 미발견 또는 python3 없음 — 온보딩 기능 왕복 생략(정적 검사만 수행)"
+fi
+
 # ── 결과 ──
 echo ""
 echo "────────────────────────────────────────────"

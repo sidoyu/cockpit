@@ -11,8 +11,8 @@ setlocal EnableExtensions
 
 rem ---- pinned values (release pipeline substitutes; publish-gate blocks placeholders
 rem      and enforces PS1_SHA256 == sha256(Install-Cockpit.ps1) == manifest bootstrap) ----
-set "PS1_URL=https://github.com/sidoyu/cockpit/releases/download/v0.1.6/Install-Cockpit.ps1"
-set "PS1_SHA256=c12c3fc865a74e80aa82cf3e4dadf557c6236e8448597c904eb19c97a973ac48"
+set "PS1_URL=https://github.com/sidoyu/cockpit/releases/download/v0.1.7/Install-Cockpit.ps1"
+set "PS1_SHA256=f524a49358f24221aeb51593c6137008b234df713021b581d1c4a91b834d39a4"
 
 set "BASE=%~dp0"
 set "PS1=%BASE%Install-Cockpit.ps1"
@@ -64,7 +64,7 @@ goto :verify
 if %errorlevel% neq 0 goto :hashfail
 echo [cockpit] Checksum OK. Starting installer...
 pushd "%BASE%"
-"%PSEXE%" -NoProfile -ExecutionPolicy Bypass -File "%PS1%"
+"%PSEXE%" -NoProfile -STA -ExecutionPolicy Bypass -File "%PS1%"
 set "RC=%errorlevel%"
 popd
 if %RC% neq 0 goto :runfail

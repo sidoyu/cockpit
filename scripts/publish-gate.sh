@@ -222,6 +222,85 @@ else
   SOFT "python3 없음 — .cmd 블록 괄호 검사 생략(설치 후 재실행 권장)"
 fi
 
+# ── 1f) 설치기 온보딩 정적 불변식(v0.1.8 설계 §7·Codex 4f 차단3/4·누락2) ──
+# 온보딩 폼(Install-Cockpit.ps1)의 안전 속성이 소스 수준에서 후퇴하지 않았는지 발행 전에 차단.
+sec "1f) 설치기 온보딩 정적 불변식"
+if [ -f "$PS1" ]; then
+  # ① C1: 설치기는 setup_complete(egress 동의 게이트)를 몰라야 한다 — 문자열 자체 금지.
+  if grep -q 'setup_complete' "$PS1"; then
+    BLOCK "Install-Cockpit.ps1 에 setup_complete 참조 — egress 동의 게이트를 온보딩 마커로 오용(C1 위반)."
+  else
+    OK "설치기에 setup_complete 참조 없음(C1)"
+  fi
+  # ② C2: set-extraction-key 행 = 허용 변수 \$DistroName 뿐(키 변수·env·경로 결합 금지) + --from-env 금지.
+  _sek_lines="$(grep -n 'set-extraction-key' "$PS1" || true)"
+  if [ -z "$_sek_lines" ]; then
+    BLOCK "Install-Cockpit.ps1 에 set-extraction-key 호출 없음 — 온보딩 키 등록 경로 누락."
+  else
+    # 허용 토큰 = 대입 대상($psi.Arguments)과 검증된 배포판명($DistroName)뿐 — 그 외 $ 는 전부 차단.
+    _sek_bad="$(printf '%s\n' "$_sek_lines" | sed -e 's/\$psi\.Arguments//g' -e 's/\$DistroName//g' | grep '\$' || true)"
+    if [ -n "$_sek_bad" ]; then
+      BLOCK "set-extraction-key 행에 \$DistroName 외 변수 결합 — 키가 argv/명령줄로 샐 수 있음(C2): $_sek_bad"
+    else
+      OK "set-extraction-key 행 변수 = \$DistroName 뿐(C2)"
+    fi
+    if printf '%s\n' "$_sek_lines" | grep -q -- '--from-env'; then
+      BLOCK "설치기가 set-extraction-key --from-env 사용 — 키를 env 로 옮기는 경로 금지(C2)."
+    fi
+  fi
+  grep -q 'RedirectStandardInput' "$PS1" \
+    && OK "키 전달 = 표준입력 리다이렉트(RedirectStandardInput) 존재(C2)" \
+    || BLOCK "RedirectStandardInput 부재 — 키 stdin 주입 경로 후퇴(C2)."
+  # 키 변수의 출력/파일/env 경유 금지(회귀 클래스 — Codex 4f impl 검토):
+  #   허용 키 변수 사용처 = 폼 수집·stdin Write·소거뿐. 출력계 cmdlet/env 대입과의 결합은 전부 차단.
+  _key_leak="$(grep -En '(\$Choice\.Key|\$result\.Key|[[:space:]]\$Key\b)' "$PS1" \
+    | grep -E 'Write-Host|Write-Output|Set-Content|Add-Content|Out-File|\$env:' || true)"
+  if [ -n "$_key_leak" ]; then
+    BLOCK "키 변수가 출력/파일/env 경로와 결합 — 키 원문 노출면(C2): $_key_leak"
+  else
+    OK "키 변수 출력/파일/env 결합 없음(C2)"
+  fi
+  if grep -Eq '(-u[[:space:]]+(root|0)|--user[[:space:]]+(root|0))' "$PS1"; then
+    BLOCK "설치기 wsl 호출에 -u/--user root(또는 0) — 키/상태가 root 소유로 기록되는 사고면(C2)."
+  else
+    OK "설치기 wsl 호출 -u/--user root 없음(C2)"
+  fi
+  # ③ C4: 설치기의 install --apply 통째 호출 금지 + narrow subcommand 실재.
+  if grep -Eq 'install[[:space:]]+--apply' "$PS1"; then
+    BLOCK "설치기가 setup.py install --apply 호출 — narrow 진입점 위반(C4·CLAUDE.md 충돌면)."
+  else
+    OK "설치기에 install --apply 호출 없음(C4)"
+  fi
+  grep -q 'add_parser("apply-installer-onboarding")' plugin/skills/setup-wizard/setup.py \
+    && OK "setup.py 에 apply-installer-onboarding subcommand 실재(C4)" \
+    || BLOCK "setup.py 에 apply-installer-onboarding 없음 — 설치기 적용 경로 깨짐(C4)."
+  # ④ C3: 폼·무인 플래그·비대화 감지·-STA 실재(후퇴 시 무인 경로 블로킹/폼 회귀).
+  grep -q 'NoOnboardingGui' "$PS1" && grep -q 'IsInputRedirected' "$PS1" && grep -q 'UserInteractive' "$PS1" \
+    && OK "무인 플래그+비대화 감지 토큰 존재(C3)" \
+    || BLOCK "-NoOnboardingGui/IsInputRedirected/UserInteractive 중 누락 — 무인 경로(Install.cmd < NUL) 블로킹 위험(C3)."
+  grep -q 'Show-OnboardingForm' "$PS1" \
+    && OK "온보딩 폼 함수 존재" \
+    || BLOCK "Show-OnboardingForm 부재 — v0.1.8 온보딩 UX 회귀."
+  grep -q -- '-STA' windows/bootstrap/Cockpit-Install.cmd \
+    && OK "Cockpit-Install.cmd -STA 존재(C3)" \
+    || BLOCK "Cockpit-Install.cmd 에 -STA 없음 — WinForms 폼 아파트먼트 미보장(C3)."
+  # ⑤ 마법사 스킵 판정 근거 = installer-onboarding.json 만(SKILL 참조 실재).
+  grep -q 'installer-onboarding.json' plugin/skills/setup-wizard/SKILL.md \
+    && OK "SKILL.md 스킵 판정 = installer-onboarding.json 참조 실재" \
+    || BLOCK "SKILL.md 에 installer-onboarding.json 참조 없음 — 재질문 스킵 로직 누락/오용."
+  # ⑥ 베이크 전제(Codex 4f 차단4): 폼 적용은 사전설치 플러그인에 의존 — 베이크 누락 이미지 발행 차단.
+  if [ -f windows/bootstrap/manifest.json ]; then
+    _baked="$(jq -r '.provenance.plugin_preinstall_baked // empty' windows/bootstrap/manifest.json)"
+    if [ "$_baked" = "true" ]; then
+      OK "manifest provenance.plugin_preinstall_baked=true(온보딩 적용 전제)"
+    else
+      BLOCK "manifest provenance.plugin_preinstall_baked != true — 베이크 누락 이미지면 설치기 온보딩 전체 fail-open."
+    fi
+  fi
+else
+  BLOCK "$PS1 가 없습니다(§1f)."
+fi
+
 # ── 2) 웹 프런트도어: example.invalid 0건 + 발행 플레이스홀더 잔존 + .cmd SHA 실측 대조 ──
 sec "2) 웹 프런트도어(사용자 노출)"
 if [ -f web/index.html ]; then

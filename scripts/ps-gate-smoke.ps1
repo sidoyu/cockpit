@@ -55,6 +55,9 @@ $cases = @(
   @{ name='bad-hex-with-unpinned';     args=@('-AllowUnpinnedImage','-ExpectedSha256','nothex','-SkipLaunch');                                      expect='64-hex' }
   # 명시적으로 example.invalid 호스트 지정 → placeholder 호스트 거부(핀 URL 치환과 무관)
   @{ name='placeholder-host';          args=@('-AllowUnpinnedImage','-ExpectedSha256',$hex64,'-ImageUrl','https://example.invalid/x.tar.gz','-SkipLaunch'); expect='플레이스홀더' }
+  # -NoOnboardingGui(v0.1.8 무인 플래그) 파라미터 수용 회귀가드 — 파라미터가 사라지면
+  # 'parameter cannot be found' 로 죽어 기대 메시지(cc-) 불일치 → FAIL.
+  @{ name='onboarding-flag-accepted';  args=@('-NoOnboardingGui','-DistroName','myubuntu','-SkipLaunch');                                            expect='cc-' }
 )
 foreach ($c in $cases) {
   $argList = @('-NoProfile','-ExecutionPolicy','Bypass','-File',$ps1) + $c.args

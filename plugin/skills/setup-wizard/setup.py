@@ -10,6 +10,10 @@
   set-extraction-key [--from-env [VAR]] [--remove] [--allow-nonstandard]
                             메모리 자동추출용 API 키를 0600 키 파일에 등록/제거(선택·BYO·G21).
                             키 원문은 argv 로 받지 않는다(ps 노출 방지) — 대화형 getpass 또는 --from-env.
+  apply-installer-onboarding --memory-egress {on,off} [--governance-ack]
+                             [--key-registered {yes,no}] [--dashboard {installed,skipped,failed}]
+                            Windows 설치기 온보딩 폼의 결정값 적용(v0.1.8·narrow 진입점).
+                            install 의 다른 책임(CLAUDE.md·settings·메모리 템플릿)은 일절 미접촉.
   rollback [--latest|--list]  마지막(또는 지정) 백업으로 복원.
 
 설계: 기존 사용자 데이터를 **덮어쓰지 않는다**(비어있을 때만 채움). settings.json 은
@@ -605,6 +609,73 @@ def set_extraction_key(from_env=None, remove=False, allow_nonstandard=False):
     return 0
 
 
+# ─────────────── 설치기 온보딩 적용(v0.1.8·C4 narrow 진입점) ───────────────
+INSTALLER_STATE_FILE = os.path.join(STATE_DIR, "installer-onboarding.json")
+
+
+def apply_installer_onboarding(memory_egress, key_registered, dashboard, governance_ack, source):
+    """Windows 설치기 폼의 결정값 적용 — 전용 narrow 진입점(설계 C4).
+    install 통째 호출 금지 사유: CLAUDE.md 충돌 preflight·템플릿 교체 책임이 얽혀
+    fresh 이미지의 사전 생성 CLAUDE.md 와 충돌한다. 여기서는 딱 두 파일만 다룬다.
+
+    기록 순서 = ①state 원자 기록 ②egress 마커 — 부분 실패가 전부 '자동추출 OFF'
+    쪽으로 수렴한다(Codex 4f 차단2): state 실패 = 마커 미기록 → 마법사 전체 질문 /
+    마커 실패 = state 만 남음 → 마법사가 불일치(egress=true·마커 부재) 감지·재안내.
+
+    setup_complete 는 여기서도 'egress 동의 게이트'라는 기존 의미 그대로만 기록한다
+    (설계 C1 — 온보딩 완료 마커로 재사용 금지·off 면 있어도 제거하지 않음: 재설정은
+    마법사 소관)."""
+    egress_on = (memory_egress == "on")
+    if egress_on and not governance_ack:
+        _p(BAD, "--memory-egress on 은 --governance-ack(거버넌스 동의) 없이는 거부합니다"
+                " — install 경로의 --i-accept-governance 게이트와 동형.")
+        return 2
+    state = {
+        "schema_version": 1,
+        "source": source,
+        "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "governance_ack": bool(governance_ack),
+        "memory_egress": egress_on,
+        "extraction_key_registered": (key_registered == "yes"),
+        "dashboard_viewer": dashboard,
+    }
+    # 1) state 원자 기록 — 실패 = 즉시 중단(마커 미기록 → 상태 없음 → 마법사 전체 질문 = 안전)
+    tmp = INSTALLER_STATE_FILE + ".tmp"
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        os.replace(tmp, INSTALLER_STATE_FILE)
+    except OSError as e:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        _p(BAD, "설치기 상태 기록 실패(%s) — egress 마커는 기록하지 않았습니다(안전 방향). "
+                "첫 실행 /cockpit-setup 이 전체 질문으로 진행합니다." % e)
+        return 2
+    _p(OK, "설치기 온보딩 상태 기록: %s" % INSTALLER_STATE_FILE)
+    # 2) egress 동의 마커(동의 게이트 통과분만·기존 install 경로와 동일 내용·의미)
+    if egress_on:
+        marker = os.path.join(STATE_DIR, "setup_complete")
+        try:
+            with open(marker, "w", encoding="utf-8") as f:
+                f.write("setup complete %s\n" % time.strftime("%Y%m%d-%H%M%S"))
+        except OSError as e:
+            _p(WARN, "egress 마커 기록 실패(%s) — 자동추출은 꺼진 상태로 남습니다(안전). "
+                     "/cockpit-setup 3.5 단계에서 재시도하세요." % e)
+            return 1
+        _p(OK, "egress 동의 마커 기록(메모리 자동추출 외부송신 활성): %s" % marker)
+        if not state["extraction_key_registered"]:
+            _p(WARN, "egress 는 켜졌지만 추출용 API 키 미등록 — 등록 전까지 자동추출은 no-op(수동 기억). "
+                     "등록: setup.py set-extraction-key")
+    else:
+        _p(INFO, "egress(메모리 자동추출 외부송신) 비활성 유지 — 나중에 켜려면 /cockpit-setup 3.5 단계.")
+    _p(INFO, "대시보드 뷰어: %s" % dashboard)
+    return 0
+
+
 # ───────────────────────── install ─────────────────────────
 def install(apply, enable_bypass, accepted=False, replace_claude_md=False, enable_egress=False):
     if enable_bypass and not accepted:
@@ -837,6 +908,17 @@ def main():
                     help="키 원문 대신 환경변수에서 읽어 저장(기본: ANTHROPIC_API_KEY_FOR_SCRIPTS→ANTHROPIC_API_KEY)")
     sk.add_argument("--remove", action="store_true", help="등록한 키 파일 삭제(자동추출 비활성 복귀)")
     sk.add_argument("--allow-nonstandard", action="store_true", help="sk-ant- 로 시작하지 않는 값도 허용")
+    ao = sub.add_parser("apply-installer-onboarding")
+    ao.add_argument("--memory-egress", choices=["on", "off"], required=True,
+                    help="기억 자동추출 외부송신 — on 은 --governance-ack 필수")
+    ao.add_argument("--governance-ack", action="store_true",
+                    help="설치기 폼의 거버넌스 동의 체크 통과 신호(--i-accept-governance 와 동형)")
+    ao.add_argument("--key-registered", choices=["yes", "no"], default="no",
+                    help="설치기의 set-extraction-key 성공 여부(기록용 — 실검증은 키 파일 존재)")
+    ao.add_argument("--dashboard", choices=["installed", "skipped", "failed"], default="skipped",
+                    help="설치기의 대시보드 뷰어 설치 결과")
+    ao.add_argument("--source", choices=["installer"], default="installer",
+                    help="결정 출처(폼 명시 제출 경로만 — 무인/취소는 이 명령 자체를 호출하지 않음)")
     rb = sub.add_parser("rollback")
     rb.add_argument("--latest", action="store_true")
     rb.add_argument("--list", action="store_true")
@@ -850,6 +932,12 @@ def main():
     if args.cmd == "set-extraction-key":
         return set_extraction_key(from_env=args.from_env, remove=args.remove,
                                   allow_nonstandard=args.allow_nonstandard)
+    if args.cmd == "apply-installer-onboarding":
+        return apply_installer_onboarding(memory_egress=args.memory_egress,
+                                          key_registered=args.key_registered,
+                                          dashboard=args.dashboard,
+                                          governance_ack=args.governance_ack,
+                                          source=args.source)
     if args.cmd == "rollback":
         return rollback("--list" if args.list else "--latest")
     return 1

@@ -26,6 +26,8 @@
 .PARAMETER Reinstall      같은 이름의 cockpit 배포판을 unregister 후 재설치(확인 프롬프트). 다른 배포판은 절대 미접촉.
 .PARAMETER SkipLaunch     설치 후 자동 진입하지 않음.
 .PARAMETER NoLauncher     원터치 런처(.cmd + 시작메뉴/바탕화면 바로가기) 생성을 건너뜀.
+.PARAMETER NoOnboardingGui 설치 말미 온보딩 폼(기억 자동추출·대시보드 선택·API 키 입력)을 생략.
+                          생략/무인 시 안전 기본값(추출 OFF·대시보드 미설치) — 첫 실행 /cockpit-setup 에서 동일 설정 가능.
 .PARAMETER AllowUnpinnedImage     핀-미사용(미발행 미리보기 / URL·해시 오버라이드)을 명시 허용(고위험).
 .PARAMETER AllowCustomDistroName  'cc-' 접두가 아닌 임의 배포판 이름을 명시 허용(고위험 — 기존 배포판 오접촉 위험).
 
@@ -43,6 +45,7 @@ param(
   [switch]$Reinstall,
   [switch]$SkipLaunch,
   [switch]$NoLauncher,
+  [switch]$NoOnboardingGui,
   [switch]$AllowUnpinnedImage,
   [switch]$AllowCustomDistroName
 )
@@ -51,10 +54,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ── 게시 시 치환되는 핀 고정값(빌드/릴리스 파이프라인이 채움) ──────────────
-$PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.6/cockpit-wsl.tar.gz'
-$PinnedSha256   = '60a84c7386f0803514ba47db8fc53b1e10d04025f7225502f775673291883fe0'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
+$PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.7/cockpit-wsl.tar.gz'
+$PinnedSha256   = '9cf570809c30493cf8507fa948fcc9c0416238b39a600b5067beb74889ffc7ea'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
 $MarketplaceUrl = 'https://github.com/sidoyu/cockpit'                                  # /plugin marketplace add 실주소(게시자 sidoyu·cc-companion).
-$PinnedDashboardCmdUrl    = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.6/Cockpit-Dashboard.cmd'
+$PinnedDashboardCmdUrl    = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.7/Cockpit-Dashboard.cmd'
 $PinnedDashboardCmdSha256 = '567174419ad280a239f9bbc6fe12d4a39a3f8fddac7702689e61151e476eaab7'   # Cockpit-Dashboard.cmd SHA-256 (repo 파일 그대로 자산 업로드 — publish-gate §1d 가 재핀 강제).
 $PLACEHOLDER_HOSTS = @('example.invalid')
 
@@ -207,6 +210,258 @@ finally {
   Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+# ── 9.5) 온보딩 폼(v0.1.8) — 설치 말미 선택 옵션 + API 키 입력 ──────────────
+# 설계 = docs/design-v0.1.8.md. 실패 전부 fail-open(Warn + 첫 실행 /cockpit-setup 폴백) —
+# import 가 성공한 설치를 온보딩 문제로 중단하지 않는다. 상태 기록(installer-onboarding.json)은
+# '동의 체크 + [적용]' 제출시에만(wsl 안 narrow subcommand) — 건너뛰기/창닫기/무인은 미기록 →
+# 첫 실행 /cockpit-setup 이 기존대로 전체 질문(안전 방향 수렴).
+# 키 전달 = wsl 표준입력 리다이렉트만: argv·env·임시파일·로그 미경유, -u 미지정(기본 사용자).
+
+function Test-OnboardingGuiBlocked {
+  # 폼을 띄우면 안 되는 이유 문자열 반환(없으면 $null) — Install.cmd < NUL·CI·원격 등 비대화 감지.
+  if ($NoOnboardingGui) { return '-NoOnboardingGui 지정' }
+  try { if ([Console]::IsInputRedirected) { return '표준입력 리다이렉트(무인 실행)' } } catch {}
+  if (-not [Environment]::UserInteractive) { return '비대화 세션' }
+  if ($env:CI) { return 'CI 환경 감지' }
+  if ([System.Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
+    return '비-STA 스레드(WinForms 불가 — Install.cmd 경유 실행은 -STA 자동)'
+  }
+  try {
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+    Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+  } catch { return "WinForms 로드 실패: $($_.Exception.Message)" }
+  return $null
+}
+
+function Show-OnboardingForm {
+  # 반환: $null = 건너뛰기/창닫기(아무것도 적용·기록하지 않음) / 해시테이블 = 동의 체크 후 [적용].
+  # 고지 문구는 마법사 SKILL §0/§3.5/§3.7 베이크분과 동일 수준 유지(동의 질) — bypass 사전적용과
+  # 옵션 1 외부송신은 별줄로 분리 표기.
+  $form = New-Object System.Windows.Forms.Form
+  $form.Text = 'cockpit 추가 설정'
+  $form.FormBorderStyle = 'FixedDialog'
+  $form.MaximizeBox = $false; $form.MinimizeBox = $false
+  $form.StartPosition = 'CenterScreen'
+  $form.ClientSize = New-Object System.Drawing.Size(600, 645)
+  $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+  $form.TopMost = $true   # 콘솔 뒤에 숨어 '설치가 멈췄다'로 오인되는 것 방지
+
+  $title = New-Object System.Windows.Forms.Label
+  $title.Text = '소프트웨어 설치처럼 선택하세요. 지금 건너뛰어도 첫 실행 후 /cockpit-setup 에서 같은 설정이 가능합니다.'
+  $title.Location = New-Object System.Drawing.Point(12, 10)
+  $title.Size = New-Object System.Drawing.Size(576, 34)
+  $form.Controls.Add($title)
+
+  # ① 거버넌스 요지 + 필수 동의(미체크 = 아래 전부 + [적용] 비활성 — 제출 경로는 '체크 후 적용' 유일)
+  $govBox = New-Object System.Windows.Forms.GroupBox
+  $govBox.Text = '사용 조건 (필수 확인)'
+  $govBox.Location = New-Object System.Drawing.Point(12, 48)
+  $govBox.Size = New-Object System.Drawing.Size(576, 152)
+  $govText = New-Object System.Windows.Forms.Label
+  $govText.Text = "- 개인 PC / 비업무 / 비민감 데이터 전용 - 환자정보·개인정보(PII)·기밀 입력 금지`n" +
+                  "- 권한 확인 생략(bypass)이 사전적용된 환경 - AI 가 확인 팝업 없이 명령을 실행할 수 있음`n" +
+                  "- 아래 옵션 1(기억 보강)을 켜면 세션 종료 시 대화 내용이 Anthropic API 로 외부 송신됨`n" +
+                  "- 끄는 법/지우는 법은 설치 후 /cockpit-setup 안내 참조 - 사용의 최종 책임은 본인에게 있음"
+  $govText.Location = New-Object System.Drawing.Point(10, 22)
+  $govText.Size = New-Object System.Drawing.Size(556, 94)
+  $govBox.Controls.Add($govText)
+  $govChk = New-Object System.Windows.Forms.CheckBox
+  $govChk.Text = '위 내용을 읽고 이해했으며 동의합니다'
+  $govChk.Location = New-Object System.Drawing.Point(10, 120)
+  $govChk.Size = New-Object System.Drawing.Size(556, 24)
+  $govBox.Controls.Add($govChk)
+  $form.Controls.Add($govBox)
+
+  # ② 기억 자동추출 옵션 1/2 (기본 = 옵션 2·키 없이)
+  $memBox = New-Object System.Windows.Forms.GroupBox
+  $memBox.Text = '기억 자동추출'
+  $memBox.Location = New-Object System.Drawing.Point(12, 208)
+  $memBox.Size = New-Object System.Drawing.Size(576, 236)
+  $memBox.Enabled = $false
+  $optKey = New-Object System.Windows.Forms.RadioButton
+  $optKey.Text = '옵션 1. API 키 입력하고 기억능력 보강하기'
+  $optKey.Location = New-Object System.Drawing.Point(10, 22)
+  $optKey.Size = New-Object System.Drawing.Size(556, 22)
+  $memBox.Controls.Add($optKey)
+  $optKeyNote = New-Object System.Windows.Forms.Label
+  $optKeyNote.Text = "세션이 끝날 때마다 대화를 자동 분석해 기억 후보를 쌓습니다. 본인 Anthropic API 키 필요`n" +
+                     "(Claude 구독과 별개 과금) - 세션 1회 최대 약 50원, 보통 10원 안팎. 콘솔에서 사용량 한도`n" +
+                     "(spend limit) 설정 권장. 발급: console.anthropic.com > API Keys > Create Key > Billing 등록."
+  $optKeyNote.Location = New-Object System.Drawing.Point(28, 46)
+  $optKeyNote.Size = New-Object System.Drawing.Size(538, 56)
+  $memBox.Controls.Add($optKeyNote)
+  $keyLabel = New-Object System.Windows.Forms.Label
+  $keyLabel.Text = 'Anthropic API 키(sk-ant-...):'
+  $keyLabel.Location = New-Object System.Drawing.Point(28, 108)
+  $keyLabel.Size = New-Object System.Drawing.Size(180, 20)
+  $memBox.Controls.Add($keyLabel)
+  $keyBox = New-Object System.Windows.Forms.TextBox
+  $keyBox.UseSystemPasswordChar = $true   # 마스킹 입력 — 키 원문은 화면·로그 미표시
+  $keyBox.Location = New-Object System.Drawing.Point(210, 105)
+  $keyBox.Size = New-Object System.Drawing.Size(350, 24)
+  $keyBox.Enabled = $false
+  $memBox.Controls.Add($keyBox)
+  $keyErr = New-Object System.Windows.Forms.Label
+  $keyErr.Text = '키 형식이 sk-ant- 로 시작하지 않습니다 - 다시 확인하세요(비표준 키는 /cockpit-setup 에서만).'
+  $keyErr.ForeColor = [System.Drawing.Color]::Firebrick
+  $keyErr.Location = New-Object System.Drawing.Point(28, 132)
+  $keyErr.Size = New-Object System.Drawing.Size(538, 18)
+  $keyErr.Visible = $false
+  $memBox.Controls.Add($keyErr)
+  $optNoKey = New-Object System.Windows.Forms.RadioButton
+  $optNoKey.Text = '옵션 2. API 키 없이 사용하기 (기본)'
+  $optNoKey.Location = New-Object System.Drawing.Point(10, 156)
+  $optNoKey.Size = New-Object System.Drawing.Size(556, 22)
+  $optNoKey.Checked = $true
+  $memBox.Controls.Add($optNoKey)
+  $optNoKeyNote = New-Object System.Windows.Forms.Label
+  $optNoKeyNote.Text = "기억 시스템은 전부 정상 동작하고, '세션 끝나고 자동으로 훑어주는' 부분만 꺼집니다.`n조건·비용 없음 - 이 기능 목적의 추가 외부 송신 없음. 나중에 /cockpit-setup 에서 켤 수 있습니다."
+  $optNoKeyNote.Location = New-Object System.Drawing.Point(28, 180)
+  $optNoKeyNote.Size = New-Object System.Drawing.Size(538, 40)
+  $memBox.Controls.Add($optNoKeyNote)
+  $form.Controls.Add($memBox)
+
+  # ③ 대시보드 뷰어 옵트인(아이콘은 항상 생성 — 이 선택은 '뷰어 본체' 설치 여부)
+  $dashBox = New-Object System.Windows.Forms.GroupBox
+  $dashBox.Text = '세션 열람 대시보드 (선택)'
+  $dashBox.Location = New-Object System.Drawing.Point(12, 452)
+  $dashBox.Size = New-Object System.Drawing.Size(576, 126)
+  $dashBox.Enabled = $false
+  $dashChk = New-Object System.Windows.Forms.CheckBox
+  $dashChk.Text = '대시보드 뷰어 설치'
+  $dashChk.Location = New-Object System.Drawing.Point(10, 22)
+  $dashChk.Size = New-Object System.Drawing.Size(556, 22)
+  $dashBox.Controls.Add($dashChk)
+  $dashNote = New-Object System.Windows.Forms.Label
+  $dashNote.Text = "로컬 민감 로그 뷰어 - 세션 기록(프롬프트·파일 경로·업무 내용)이 브라우저로 열립니다.`n" +
+                   "공유 PC·회사 보안정책 기기·화면공유 중에는 설치하지 마세요. 설치해도 자동시작·포트 개방은`n" +
+                   "없습니다(켜기 = 바탕화면 'Cockpit Dashboard' 아이콘·창 닫으면 꺼짐). 설치에 네트워크 필요.`n" +
+                   "바탕화면 아이콘 자체는 항상 만들어집니다 - 이 선택은 뷰어 본체 설치 여부입니다."
+  $dashNote.Location = New-Object System.Drawing.Point(28, 46)
+  $dashNote.Size = New-Object System.Drawing.Size(538, 74)
+  $dashBox.Controls.Add($dashNote)
+  $form.Controls.Add($dashBox)
+
+  $btnApply = New-Object System.Windows.Forms.Button
+  $btnApply.Text = '적용하고 계속'
+  $btnApply.Location = New-Object System.Drawing.Point(160, 592)
+  $btnApply.Size = New-Object System.Drawing.Size(180, 32)
+  $btnApply.Enabled = $false
+  $form.Controls.Add($btnApply)
+  $btnSkip = New-Object System.Windows.Forms.Button
+  $btnSkip.Text = '건너뛰기 (나중에 /cockpit-setup)'
+  $btnSkip.Location = New-Object System.Drawing.Point(356, 592)
+  $btnSkip.Size = New-Object System.Drawing.Size(220, 32)
+  $form.Controls.Add($btnSkip)
+  $form.CancelButton = $btnSkip
+
+  $govChk.add_CheckedChanged({
+    $memBox.Enabled = $govChk.Checked
+    $dashBox.Enabled = $govChk.Checked
+    $btnApply.Enabled = $govChk.Checked
+  })
+  $optKey.add_CheckedChanged({
+    $keyBox.Enabled = $optKey.Checked
+    if (-not $optKey.Checked) { $keyErr.Visible = $false }
+  })
+  $btnApply.add_Click({
+    if ($optKey.Checked -and -not $keyBox.Text.Trim().StartsWith('sk-ant-')) {
+      $keyErr.Visible = $true
+      return
+    }
+    $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $form.Close()
+  })
+  $btnSkip.add_Click({
+    $form.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $form.Close()
+  })
+
+  $dr = $form.ShowDialog()
+  $result = $null
+  if ($dr -eq [System.Windows.Forms.DialogResult]::OK) {
+    $result = @{ Egress = $optKey.Checked; Key = $null; Dashboard = $dashChk.Checked }
+    if ($optKey.Checked) { $result.Key = $keyBox.Text.Trim() }
+  }
+  $keyBox.Text = ''   # best-effort 소거(컨트롤 잔존 제거 — .NET string 불변성 한계는 인지)
+  $form.Dispose()
+  return $result
+}
+
+function Invoke-OnboardKeyInject {
+  # 키 원문은 wsl 표준입력 한 줄로만 이동. argv·env·임시파일 미경유(아래 Arguments 행에
+  # 키 변수 결합 금지 — publish-gate §1f 가 정적 차단). 출력·예외에 키 원문 미기록.
+  param([string]$DistroName, [string]$Key)
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = 'wsl.exe'
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardInput = $true
+  $psi.Arguments = '-d ' + $DistroName + ' -- /usr/local/bin/cockpit-onboard setup set-extraction-key'
+  $proc = [System.Diagnostics.Process]::Start($psi)
+  # LF 명시(WriteLine=CRLF → WSL 쪽에 \r 잔존, 실측 2026-07-06). 수신측 strip 에 의존하지 않는다.
+  $proc.StandardInput.Write($Key + "`n")
+  $proc.StandardInput.Close()
+  if (-not $proc.WaitForExit(60000)) {
+    try { $proc.Kill() } catch {}
+    $Key = $null
+    return 124
+  }
+  $Key = $null   # best-effort 소거
+  return $proc.ExitCode
+}
+
+function Invoke-OnboardApply {
+  # 적용 순서 = 키 → 뷰어 → 상태 기록(마지막 1회) — 상태 기록 실패 시 파일이 안 남고,
+  # 파일이 없으면 마법사가 전체 질문으로 폴백(안전 방향). 각 단계 실패는 Warn 후 계속.
+  param([string]$DistroName, [hashtable]$Choice)
+  $keyReg = 'no'
+  if ($Choice.Egress -and $Choice.Key) {
+    $rc = Invoke-OnboardKeyInject -DistroName $DistroName -Key $Choice.Key
+    $Choice.Key = $null   # best-effort 소거(이후 단계는 키 원문 불필요)
+    if ($rc -eq 0) {
+      $keyReg = 'yes'
+      Info '추출용 API 키 등록 완료(0600 키 파일 — 원문은 화면·로그에 표시되지 않음).'
+    } else {
+      Warn "키 등록 실패(코드 $rc) — 키 등록 전까지 자동추출은 동작하지 않습니다(no-op). 첫 실행 /cockpit-setup 3.6 단계에서 재등록하세요."
+    }
+  }
+  $dash = 'skipped'
+  if ($Choice.Dashboard) {
+    Info '대시보드 뷰어 설치(네트워크 필요·핀 커밋 클론)…'
+    & wsl.exe -d $DistroName -- /usr/local/bin/cockpit-onboard install-dashboard
+    if ($LASTEXITCODE -eq 0) { $dash = 'installed' }
+    else {
+      $dash = 'failed'
+      Warn "뷰어 설치 실패(코드 $LASTEXITCODE) — 아이콘은 미설치 안내를 표시합니다. 첫 실행 /cockpit-setup 3.7 단계에서 재시도하세요."
+    }
+  }
+  $egress = 'off'; if ($Choice.Egress) { $egress = 'on' }
+  & wsl.exe -d $DistroName -- /usr/local/bin/cockpit-onboard setup apply-installer-onboarding --governance-ack --memory-egress $egress --key-registered $keyReg --dashboard $dash --source installer
+  # rc 구분(setup.py 계약): 2=state 기록 실패(파일 없음→마법사 전체 질문) / 1=state 성공·egress
+  # 마커만 실패(마법사가 불일치 감지→해당 단계 재안내). 뭉뚱그리면 안내가 부정확(Codex 4f).
+  if ($LASTEXITCODE -eq 1) {
+    Warn "egress 마커 기록만 실패 — 자동추출은 꺼진 상태(안전). 첫 실행 /cockpit-setup 이 해당 단계만 재안내합니다."
+  } elseif ($LASTEXITCODE -ne 0) {
+    Warn "온보딩 상태 기록 실패(코드 $LASTEXITCODE) — 첫 실행 /cockpit-setup 이 전체 질문으로 진행합니다(안전)."
+  }
+}
+
+$OnboardingBlocked = $null
+try { $OnboardingBlocked = Test-OnboardingGuiBlocked } catch { $OnboardingBlocked = "감지 실패: $($_.Exception.Message)" }
+if ($OnboardingBlocked) {
+  Info "온보딩 화면 생략($OnboardingBlocked) — 안전 기본값(자동추출 OFF·대시보드 미설치). 첫 실행 /cockpit-setup 에서 동일 설정 가능."
+} else {
+  Info '온보딩 화면 표시(선택 옵션·API 키) — 창에서 선택을 마치면 설치가 이어집니다.'
+  try {
+    $OnboardingChoice = Show-OnboardingForm
+    if ($OnboardingChoice) { Invoke-OnboardApply -DistroName $DistroName -Choice $OnboardingChoice }
+    else { Info '온보딩 건너뜀 — 첫 실행 /cockpit-setup 에서 같은 설정을 안내합니다.' }
+    $OnboardingChoice = $null   # best-effort 소거(키 원문 참조 해제)
+  } catch {
+    Warn "온보딩 처리 오류(설치는 정상): $($_.Exception.Message) — 첫 실행 /cockpit-setup 에서 설정하세요."
+  }
+}
+
 # ── 10) 원터치 런처(.cmd + 시작메뉴/바탕화면 바로가기) ─────────────────────
 # 비개발자가 매번 명령을 치지 않도록: 더블클릭 한 번 = claude 실행. 래퍼(.cmd)가 wsl/배포판을
 # 호출하고, 시작메뉴(주)·바탕화면(보조) 바로가기가 그 .cmd 를 가리킨다.
@@ -345,7 +600,7 @@ if ($LauncherCmd) {
   Write-Host "  • 진입:  wsl -d $DistroName"
 }
 if ($DashboardCmd) {
-  Write-Host "  • 바탕화면 'Cockpit Dashboard' 더블클릭 → 세션 대시보드(선택 기능·/cockpit-setup 에서 옵트인 후 동작·창 닫으면 꺼짐)."
+  Write-Host "  • 바탕화면 'Cockpit Dashboard' 더블클릭 → 세션 대시보드(선택 기능·창 닫으면 꺼짐. 뷰어 미설치면 온보딩 재실행 또는 /cockpit-setup 옵트인 후 동작)."
 }
 Write-Host "  1) claude 로그인(최초 1회, 브라우저 OAuth): 실행 후 /login"
 Write-Host "  2) 로그인 후 claude 재시작 → claude.ai/code 원격조종 활성(최초 실행은 미로그인이라 원격이 조용히 꺼져 있음)."
