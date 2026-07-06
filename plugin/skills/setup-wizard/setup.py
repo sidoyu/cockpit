@@ -57,6 +57,51 @@ def _dir_nonempty(d):
         return False
 
 
+def _memory_effectively_empty(d):
+    """기억 저장소에 '사용자 기억이 없는가' — 없거나 비었거나, **템플릿 파일만 있고
+    전부 동명 템플릿(memory-template)과 바이트 동일**이면 True(부분집합 허용 — 일부만
+    남아 있어도 전부 템플릿 원본과 동일하면 사용자 기억 0건으로 본다).
+    fresh 이미지는 템플릿 md 를 미리 담아 오므로 단순 비어있음 검사로는 재설치 직후를
+    영원히 못 잡는다(v0.1.6 실기 확정) — 복원 안내(§1.5)의 발화 조건은 이 함수를 쓴다.
+    판정 불가(권한 등)나 템플릿 외 산출물(하위 디렉터리·심링크·변경 파일)이 있으면
+    False = 안내 억제(복원 질문 오발화가 더 해로운 쪽이라 보수적 기본)."""
+    try:
+        if not os.path.isdir(d):
+            return True
+        entries = list(os.scandir(d))
+        if not entries:
+            return True
+        tpl_names = set(n for n in os.listdir(MEMORY_TEMPLATE)
+                        if n.endswith(".md")) if os.path.isdir(MEMORY_TEMPLATE) else set()
+        import filecmp
+        for e in entries:
+            if not e.is_file(follow_symlinks=False):
+                return False
+            if e.name not in tpl_names:
+                return False
+            if not filecmp.cmp(e.path, os.path.join(MEMORY_TEMPLATE, e.name), shallow=False):
+                return False
+        return True
+    except OSError:
+        return False
+
+
+def _restore_candidates():
+    """복원 가능한 백업 후보 [(디렉터리, 개수)] — backup.py 의 스캔 로직 재사용(단일출처·
+    로컬 glob 만·네트워크 0). sys.path 에 MEM_HOOKS 가 있어 직접 import 한다.
+    어떤 실패든 빈 리스트 = 복원 안내 억제(doctor 는 읽기 전용·비치명 유지)."""
+    try:
+        import backup as _backup
+        out = []
+        for d in _backup._scan_candidate_dirs():
+            n = len(_backup._backups_in(d))
+            if n:
+                out.append((d, n))
+        return out
+    except Exception:
+        return []
+
+
 def _port_listening(port):
     """로컬에서 해당 포트가 LISTEN 중인지(원격 대시보드 ON 탐지). 크로스플랫폼·읽기전용."""
     import socket
@@ -405,10 +450,18 @@ def doctor():
     else:
         _p(INFO, "기억·상태 백업 없음 — 재설치는 배포판 내부 기억을 지웁니다. 재설치 전 권장: "
                  "python3 %s/backup.py (위치=CC_BACKUP_DIR, WSL 은 재설치 생존 위해 /mnt/c/... 권장)" % MEM_HOOKS)
-    # 재설치 직후(기억 저장소 비었음) + 백업 발견 → 자동 복원 경로 안내(마법사 1.5단계).
-    if not _dir_nonempty(MEMORY_DIR):
-        _p(INFO, "기억 저장소가 비어 있습니다 — 재설치라면 이전 백업 복원 가능: "
-                 "python3 %s/backup.py --scan → --restore --apply (기본 dry-run·기존 데이터는 .pre-restore 로 보존)" % MEM_HOOKS)
+    # 재설치 직후(사용자 기억 0건 = 비었거나 초기 템플릿뿐) **그리고 복원할 백업이 실제로
+    # 발견될 때만** 자동 복원 경로 안내(마법사 1.5단계). 두 조건의 AND 인 이유(Codex 4f):
+    #  - 단순 비어있음 검사는 템플릿 베이크 이미지에서 영원히 불성립(v0.1.6 실기) → 템플릿 동등 판정.
+    #  - 기억-비었음 단독이면 백업이 전혀 없는 신규 설치에서도 "복원할까요?" 오발화.
+    #  - 백업-존재 단독이면 건강한 설치에서 doctor 마다 복원 안내(오발화). 스캔은 로컬 glob 만(egress 0).
+    if _memory_effectively_empty(MEMORY_DIR):
+        cands = _restore_candidates()
+        if cands:
+            where = " · ".join("%s(%d개)" % (d, n) for d, n in cands[:3])
+            _p(INFO, "기억 저장소에 사용자 기억이 없습니다(비었거나 초기 템플릿뿐) + 이전 백업 발견: %s "
+                     "— 재설치라면 복원 가능: python3 %s/backup.py --scan → --restore --apply "
+                     "(기본 dry-run·기존 데이터는 .pre-restore 로 보존)" % (where, MEM_HOOKS))
     _p(INFO, "메모리 유지보수(수동·report-only): %s 의 diet_suggest·freshness_check·read_report·"
              "build_archive_index·rotate_intent_log" % MEM_HOOKS)
 

@@ -68,9 +68,14 @@ rem shortcuts: resolve the real Desktop/Start Menu via PowerShell (OneDrive may
 rem redirect Desktop away from %USERPROFILE%\Desktop). Delete a shortcut ONLY if
 rem its TargetPath points into our launcher folder - a same-named shortcut the
 rem user made for something else is left alone. Best-effort, never fatal.
+rem SAFETY - keep every line inside the block below free of unquoted parens: cmd
+rem scans block bodies for a bare closing paren, ends the block right there and
+rem aborts the whole batch - and this applies to rem comments inside blocks too.
+rem Live-proven v0.1.6: the final echo said "if any" in parens and this whole
+rem shortcut cleanup never ran. publish-gate 1e / cmd-paren-gate.py now block it.
 if exist "%PSEXE%" (
   "%PSEXE%" -NoProfile -NonInteractive -Command "$ws=New-Object -ComObject WScript.Shell; $dir=Join-Path $env:LOCALAPPDATA 'Cockpit'; foreach($n in @('Claude (cockpit).lnk','Cockpit Dashboard.lnk')){foreach($d in @([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'))){$p=Join-Path $d $n; if(Test-Path $p){$t=$ws.CreateShortcut($p).TargetPath; if($t -like ($dir+'\*')){Remove-Item $p -Force -ErrorAction SilentlyContinue}}}}" 1>nul 2>nul
-  echo [cockpit] Removed cockpit shortcuts from Desktop / Start Menu (if any).
+  echo [cockpit] Removed cockpit shortcuts from Desktop / Start Menu, if any.
 )
 
 echo(

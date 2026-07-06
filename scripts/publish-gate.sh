@@ -205,6 +205,23 @@ if [ -f "$DASHF" ] && [ -f "$PS1" ]; then
   fi
 fi   # $DASHF 존재 BLOCK 은 §1c 담당
 
+# ── 1e) .cmd 블록 내 비인용 괄호(배치 파스 조기종결) 검사 ──
+# v0.1.6 실사고: Uninstall.cmd 의 if-블록 안 echo "(if any)." 가 cmd 블록을 조기 종결
+# → 바로가기 삭제 미실행+배치 중단. Windows 실행 없이(Linux CI 포함) 소스 수준에서 기계 차단.
+# 판정 모델·한계·오탐 이력 = scripts/cmd-paren-gate.py 헤더 단일출처(양/음성 픽스처 검증).
+sec "1e) .cmd 블록 내 비인용 괄호(배치 파스 안전)"
+if command -v python3 >/dev/null 2>&1; then
+  _paren_out="$(python3 scripts/cmd-paren-gate.py windows/bootstrap/*.cmd 2>&1)"; _paren_rc=$?
+  if [ "$_paren_rc" -eq 0 ]; then
+    OK "windows/bootstrap/*.cmd 블록 내 비인용 괄호 0건"
+  else
+    echo "$_paren_out"
+    BLOCK ".cmd 블록 안 텍스트에 비인용 괄호 — cmd 가 블록을 조기 종결(v0.1.6 Uninstall 실사고 클래스). 괄호 제거/^( ^) 이스케이프/따옴표 보호 후 재실행."
+  fi
+else
+  SOFT "python3 없음 — .cmd 블록 괄호 검사 생략(설치 후 재실행 권장)"
+fi
+
 # ── 2) 웹 프런트도어: example.invalid 0건 + 발행 플레이스홀더 잔존 + .cmd SHA 실측 대조 ──
 sec "2) 웹 프런트도어(사용자 노출)"
 if [ -f web/index.html ]; then

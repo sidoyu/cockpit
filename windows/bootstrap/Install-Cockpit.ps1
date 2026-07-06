@@ -51,10 +51,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ── 게시 시 치환되는 핀 고정값(빌드/릴리스 파이프라인이 채움) ──────────────
-$PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.5/cockpit-wsl.tar.gz'
-$PinnedSha256   = '86d0e50400c6a97f1264811bf958c1a7f8cefa0eb6718d722b134a4bdf246a23'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
+$PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.6/cockpit-wsl.tar.gz'
+$PinnedSha256   = '60a84c7386f0803514ba47db8fc53b1e10d04025f7225502f775673291883fe0'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
 $MarketplaceUrl = 'https://github.com/sidoyu/cockpit'                                  # /plugin marketplace add 실주소(게시자 sidoyu·cc-companion).
-$PinnedDashboardCmdUrl    = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Cockpit-Dashboard.cmd'
+$PinnedDashboardCmdUrl    = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.6/Cockpit-Dashboard.cmd'
 $PinnedDashboardCmdSha256 = '567174419ad280a239f9bbc6fe12d4a39a3f8fddac7702689e61151e476eaab7'   # Cockpit-Dashboard.cmd SHA-256 (repo 파일 그대로 자산 업로드 — publish-gate §1d 가 재핀 강제).
 $PLACEHOLDER_HOSTS = @('example.invalid')
 
