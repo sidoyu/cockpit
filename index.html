@@ -44,7 +44,7 @@
     <!-- 큰 다운로드 버튼 — fail-closed: 동의 전 href=#downloads(표 폴백), 동의 시 JS가 data-href 주입 -->
     <p class="cta-row">
       <a id="dl-cta" class="btn-download locked" href="#downloads" aria-disabled="true"
-         data-href="https://github.com/sidoyu/cockpit/releases/download/v0.1.7/Cockpit-Install.cmd" rel="nofollow">
+         data-href="https://github.com/sidoyu/cockpit/releases/download/v0.1.8/Cockpit-Install.cmd" rel="nofollow">
         ⬇ 설치 파일 받기 <span class="cta-sub">Cockpit-Install.cmd · Windows</span>
       </a>
     </p>
@@ -56,10 +56,11 @@
       <li><strong>위 버튼을 눌러 파일을 받습니다.</strong></li>
       <li><strong>받은 파일을 더블클릭합니다.</strong> 검은 창이 열리고 알아서 설치합니다(인터넷 필요 · 수 분 소요).
         <span class="substep">파란 경고 창(“Windows의 PC 보호”)이 뜨면 <strong>[추가 정보] → [실행]</strong>을 누르세요.
-        경고 없이 바로 진행되는 PC도 있는데 둘 다 정상입니다.</span></li>
+        경고 없이 바로 진행되는 PC도 있는데 둘 다 정상입니다.</span>
+        <span class="substep">설치가 거의 끝나면 <strong>작은 설정 창</strong>이 한 번 뜹니다 — <strong>개인 PC·비업무 전용 동의</strong>(필수 체크)와, 원하면 <strong>기억 자동정리용 API 키</strong>·<strong>세션 기록 대시보드</strong>를 여기서 한 번에 정합니다. <strong>잘 모르면 [건너뛰기]</strong>를 눌러도 됩니다 — 아래 <code>/cockpit-setup</code> 마법사가 나중에 그대로 물어봅니다.</span></li>
       <li><strong>설치가 끝나면 바탕화면의 “Claude (cockpit)” 아이콘을 더블클릭합니다.</strong></li>
       <li><strong>검은 창에 <code>/login</code> 을 입력하고 Enter.</strong> 브라우저가 열리면 본인 Claude 계정으로 승인합니다.</li>
-      <li><strong>같은 창에 <code>/cockpit-setup</code> 을 입력합니다.</strong> 동의 확인과 세부 설정을 마법사가 안내합니다.
+      <li><strong>같은 창에 <code>/cockpit-setup</code> 을 입력합니다.</strong> <strong>설치 창에서 이미 정한 항목(동의·API 키·대시보드)은 건너뛰고</strong>, 남은 세부 설정을 마법사가 안내합니다(설치 창에서 [건너뛰기]했다면 여기서 전부 물어봅니다).
         <span class="substep">휴대폰·claude.ai에서 이어 쓰는 원격 조종을 켜려면, 안내에 따라 창을 한 번 껐다 다시 켜면 됩니다. 끝입니다.</span></li>
     </ol>
     <p class="muted">팁: 추론 강도는 <code>/effort</code> 에서 <strong>xhigh</strong>를 고르세요(계정 한도에 따라 high로 남을 수 있고 그것도 정상).</p>
@@ -75,7 +76,7 @@
       <summary>무엇이 깔리나</summary>
       <div class="cards">
         <div class="card"><h3>작업 규율(행동층)</h3><p>자율 진행 경계, 두 순간 자기점검, 읽기/검색 위생. 설치 마법사가 <code>~/.claude/CLAUDE.md</code>로 적용.</p></div>
-        <div class="card"><h3>메모리 시스템</h3><p>파일 기반(md + python 훅). 세션 시작 시 상태 주입, 종료 시 기억 후보 추출, 인덱스 자동 재생성. <strong>자동 추출(외부 송신)은 개인 API 키 옵트인</strong> — 마법사에서 등록하며 미등록 시 기억은 수동으로만 쌓입니다(키 사용량은 정액 구독과 별개로 과금, 콘솔에서 한도 설정 권장).</p></div>
+        <div class="card"><h3>메모리 시스템</h3><p>파일 기반(md + python 훅). 세션 시작 시 상태 주입, 종료 시 기억 후보 추출, 인덱스 자동 재생성. <strong>자동 추출(외부 송신)은 개인 API 키 옵트인</strong> — 설치 창(또는 <code>/cockpit-setup</code> 마법사)에서 등록하며 미등록 시 기억은 수동으로만 쌓입니다(키 사용량은 정액 구독과 별개로 과금, 콘솔에서 한도 설정 권장).</p></div>
         <div class="card"><h3>안전망</h3><p>파괴/비가역 명령 금지목록(deny-list), 긴급정지(kill switch), 감사 로그.</p></div>
         <div class="card"><h3>세션 기록 대시보드(선택)</h3><p>세션 로그를 <strong>이 PC의 브라우저 창</strong>으로 열람(바탕화면 <strong>'Cockpit Dashboard' 아이콘</strong> 또는 <code>Cockpit-Dashboard.cmd</code> 더블클릭 · 창 닫으면 꺼짐). <strong>기본 로컬 전용</strong>, 타기기 원격 열람은 고급·옵트인.</p></div>
         <div class="card"><h3>설치 마법사</h3><p>기본 사용자·메모리 디렉터리·선택 기능을 안내하고 충돌 검사·dry-run·롤백을 제공.</p></div>
@@ -115,7 +116,7 @@ bash plugin/dashboard/disable-remote.sh --apply</code></pre></div>
 
     <details class="fold" id="dashboard-local">
       <summary>세션 기록 대시보드 켜기 (로컬 · 선택)</summary>
-      <p>설치 마법사에서 대시보드를 <strong>옵트인</strong>했다면(<code>/cockpit-setup</code>의 대시보드 스텝),
+      <p>설치 창 또는 마법사에서 대시보드를 <strong>옵트인</strong>했다면(설치 중 설정 창 또는 <code>/cockpit-setup</code>의 대시보드 스텝),
         바탕화면의 <strong>'Cockpit Dashboard' 아이콘</strong>(설치기가 만들어 둠)이나 <code>Cockpit-Dashboard.cmd</code>를 <strong>더블클릭</strong>해
         세션 기록을 이 PC의 브라우저 창으로 봅니다
         (<a href="#downloads">아래 다운로드 표</a>). 서버 개념을 다룰 필요 없이, <strong>새로 켠 창을 닫으면 서버도 함께 꺼집니다</strong>(정확한 조건은 아래).</p>
@@ -148,14 +149,14 @@ bash plugin/dashboard/disable-remote.sh --apply</code></pre></div>
       <table class="dl">
         <thead><tr><th>산출물</th><th>대상</th><th>링크</th><th>SHA-256 / 서명</th></tr></thead>
         <tbody>
-          <tr><td><strong>원클릭 설치</strong></td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.7/Cockpit-Install.cmd" rel="nofollow"><code>Cockpit-Install.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Install.cmd">SHA-256: bdbef6b92f393369aa38d331dcec81610f96b67875833b914acba26e2b4bb7e6<br>(더블클릭 = ps1 자동 다운로드·해시 대조·실행)</code></td></tr>
-          <tr><td>세션 기록 대시보드</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.7/Cockpit-Dashboard.cmd" rel="nofollow"><code>Cockpit-Dashboard.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Dashboard.cmd">SHA-256: 567174419ad280a239f9bbc6fe12d4a39a3f8fddac7702689e61151e476eaab7<br>(더블클릭 = 로컬 창 열람·창 닫으면 종료)</code></td></tr>
-          <tr><td>복구·재설치(문제 발생 시)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.7/Cockpit-Repair.cmd" rel="nofollow"><code>Cockpit-Repair.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Repair.cmd">SHA-256: c74e4bde6f60abd59d2d78a74599060d4770afe40e9e6cc167f8099115899055<br>(더블클릭 = 재설치 · 배포판 내부 기억·설정·로그 소실 · 재입력 확인)</code></td></tr>
-          <tr><td>완전 제거</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.7/Cockpit-Uninstall.cmd" rel="nofollow"><code>Cockpit-Uninstall.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Uninstall.cmd">SHA-256: 4657411b883a45eece9c692bba3e99e7b99e25052d34c0f063f0d3b8d587668b<br>(더블클릭 = cc-cockpit 배포판만 삭제 · 타 배포판 미접촉)</code></td></tr>
-          <tr><td>WSL2 배포판 이미지</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.7/cockpit-wsl.tar.gz" rel="nofollow">cockpit-wsl.tar.gz</a></td><td><code class="cksum">SHA-256: 9cf570809c30493cf8507fa948fcc9c0416238b39a600b5067beb74889ffc7ea<br>(부트스트랩이 import 전 자동 대조)</code></td></tr>
-          <tr><td>PowerShell 부트스트랩</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.7/Install-Cockpit.ps1" rel="nofollow">Install-Cockpit.ps1</a></td><td><code class="cksum">SHA-256: f524a49358f24221aeb51593c6137008b234df713021b581d1c4a91b834d39a4<br>(서명 없음 — Get-FileHash 로 대조)</code></td></tr>
-          <tr><td>부트스트랩(스테이지드 폴백)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.7/Install-Cockpit-Staged.ps1" rel="nofollow">Install-Cockpit-Staged.ps1</a></td><td><code class="cksum">SHA-256: a567eb434211e329ce701abdcc6328e87b1d61ee75eec6f60e6b216f88911919<br>(서명 없음)</code></td></tr>
-          <tr><td>이미지 출처(provenance)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.7/provenance.json" rel="nofollow">provenance.json</a></td><td><code class="cksum">— 베이스 digest·SBOM·빌드로그</code></td></tr>
+          <tr><td><strong>원클릭 설치</strong></td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.8/Cockpit-Install.cmd" rel="nofollow"><code>Cockpit-Install.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Install.cmd">SHA-256: f0243c09f584828428b78980897f5e15f42fd3b3beae65984770fac5e6cf3e4d<br>(더블클릭 = ps1 자동 다운로드·해시 대조·실행)</code></td></tr>
+          <tr><td>세션 기록 대시보드</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.8/Cockpit-Dashboard.cmd" rel="nofollow"><code>Cockpit-Dashboard.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Dashboard.cmd">SHA-256: 567174419ad280a239f9bbc6fe12d4a39a3f8fddac7702689e61151e476eaab7<br>(더블클릭 = 로컬 창 열람·창 닫으면 종료)</code></td></tr>
+          <tr><td>복구·재설치(문제 발생 시)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.8/Cockpit-Repair.cmd" rel="nofollow"><code>Cockpit-Repair.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Repair.cmd">SHA-256: b7193a2bb7a6fcf14a7ca4ff23690b4629396f020354bd1ca49ad1d445e0f762<br>(더블클릭 = 재설치 · 배포판 내부 기억·설정·로그 소실 · 재입력 확인)</code></td></tr>
+          <tr><td>완전 제거</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.8/Cockpit-Uninstall.cmd" rel="nofollow"><code>Cockpit-Uninstall.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Uninstall.cmd">SHA-256: 4657411b883a45eece9c692bba3e99e7b99e25052d34c0f063f0d3b8d587668b<br>(더블클릭 = cc-cockpit 배포판만 삭제 · 타 배포판 미접촉)</code></td></tr>
+          <tr><td>WSL2 배포판 이미지</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.8/cockpit-wsl.tar.gz" rel="nofollow">cockpit-wsl.tar.gz</a></td><td><code class="cksum">SHA-256: b74bf7c09bdc656e52b2df836caac2b3810a8f7661bb1778c451bae8902ed2c4<br>(부트스트랩이 import 전 자동 대조)</code></td></tr>
+          <tr><td>PowerShell 부트스트랩</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.8/Install-Cockpit.ps1" rel="nofollow">Install-Cockpit.ps1</a></td><td><code class="cksum">SHA-256: 906b7cbb2539d76dbd617bfc8e1ccc0fd9f7b628427dcdaba76caa84aa6b15e8<br>(서명 없음 — Get-FileHash 로 대조)</code></td></tr>
+          <tr><td>부트스트랩(스테이지드 폴백)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.8/Install-Cockpit-Staged.ps1" rel="nofollow">Install-Cockpit-Staged.ps1</a></td><td><code class="cksum">SHA-256: 0cb247b51a49d40b20fa24db29bddfc5d81476c4e704ff97e6b3e0d22acc8cf9<br>(서명 없음)</code></td></tr>
+          <tr><td>이미지 출처(provenance)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.8/provenance.json" rel="nofollow">provenance.json</a></td><td><code class="cksum">— 베이스 digest·SBOM·빌드로그</code></td></tr>
           <tr><td>플러그인(행동층)</td><td>공통</td><td><a href="https://github.com/sidoyu/cockpit" rel="nofollow">cockpit@cc-companion</a></td><td><code class="cksum">— (마켓플레이스)</code></td></tr>
         </tbody>
       </table>
@@ -225,7 +226,7 @@ bash plugin/dashboard/disable-remote.sh --apply</code></pre></div>
 
 <footer class="site-footer">
   <div class="wrap">
-    <p>cc-companion · cockpit <span id="ver">v0.1.7</span> · 개인 학습용 도구(회사 공식 IT 배포물 아님).</p>
+    <p>cc-companion · cockpit <span id="ver">v0.1.8</span> · 개인 학습용 도구(회사 공식 IT 배포물 아님).</p>
     <p class="links">
       <a href="https://github.com/sidoyu/cockpit/blob/main/GOVERNANCE.md">거버넌스</a> ·
       <a href="https://github.com/sidoyu/cockpit/blob/main/README.md">패키지 README</a> ·
