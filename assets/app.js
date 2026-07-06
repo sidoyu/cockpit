@@ -49,22 +49,41 @@
     btn.addEventListener("click", function () { applyOS(btn.getAttribute("data-os")); });
   });
 
-  /* ── 거버넌스 동의 게이팅 (복사 버튼 잠금/해제) ───────────── */
+  /* ── 거버넌스 동의 게이팅 (다운로드 버튼·복사 버튼 잠금/해제) ── */
   var consent = document.getElementById("consent-check");
   var hint = document.getElementById("consent-hint");
+  var cta = document.getElementById("dl-cta");
   function syncGate() {
     var ok = consent && consent.checked;
     document.querySelectorAll(".code[data-gated]").forEach(function (el) {
       el.classList.toggle("locked", !ok);
     });
+    if (cta) {
+      // fail-closed: 동의 전에는 href 가 #downloads(표 폴백)이고, 동의 시에만 실제 URL 주입.
+      cta.classList.toggle("locked", !ok);
+      cta.setAttribute("aria-disabled", String(!ok));
+      var real = cta.getAttribute("data-href");
+      if (ok && real) cta.setAttribute("href", real);
+      else cta.setAttribute("href", "#downloads");
+    }
     if (hint) hint.textContent = ok
-      ? "동의됨 — 아래 설치 명령의 복사 버튼이 활성화되었습니다."
-      : "동의하면 아래 설치 단계의 복사 버튼이 활성화됩니다.";
+      ? "확인됨 — 아래 다운로드 버튼이 활성화되었습니다."
+      : "체크하면 아래 다운로드 버튼이 활성화됩니다.";
   }
   if (consent) {
     // 동의는 매 방문 새로 받음(영속 안 함) — 경계 재확인 의도.
     consent.checked = false;
     consent.addEventListener("change", syncGate);
+  }
+  if (cta) {
+    cta.addEventListener("click", function (e) {
+      if (cta.classList.contains("locked")) {
+        e.preventDefault(); // href 는 이미 #downloads 라 이중 방어
+        if (hint) hint.textContent = "먼저 위 3가지 확인에 체크해 주세요.";
+        var g = document.getElementById("governance");
+        if (g && g.scrollIntoView) g.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
   }
   syncGate();
 
