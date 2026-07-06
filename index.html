@@ -44,7 +44,7 @@
     <!-- 큰 다운로드 버튼 — fail-closed: 동의 전 href=#downloads(표 폴백), 동의 시 JS가 data-href 주입 -->
     <p class="cta-row">
       <a id="dl-cta" class="btn-download locked" href="#downloads" aria-disabled="true"
-         data-href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Cockpit-Install.cmd" rel="nofollow">
+         data-href="https://github.com/sidoyu/cockpit/releases/download/v0.1.6/Cockpit-Install.cmd" rel="nofollow">
         ⬇ 설치 파일 받기 <span class="cta-sub">Cockpit-Install.cmd · Windows</span>
       </a>
     </p>
@@ -77,7 +77,7 @@
         <div class="card"><h3>작업 규율(행동층)</h3><p>자율 진행 경계, 두 순간 자기점검, 읽기/검색 위생. 설치 마법사가 <code>~/.claude/CLAUDE.md</code>로 적용.</p></div>
         <div class="card"><h3>메모리 시스템</h3><p>파일 기반(md + python 훅). 세션 시작 시 상태 주입, 종료 시 기억 후보 추출, 인덱스 자동 재생성. <strong>자동 추출(외부 송신)은 개인 API 키 옵트인</strong> — 마법사에서 등록하며 미등록 시 기억은 수동으로만 쌓입니다(키 사용량은 정액 구독과 별개로 과금, 콘솔에서 한도 설정 권장).</p></div>
         <div class="card"><h3>안전망</h3><p>파괴/비가역 명령 금지목록(deny-list), 긴급정지(kill switch), 감사 로그.</p></div>
-        <div class="card"><h3>세션 기록 대시보드(선택)</h3><p>세션 로그를 <strong>이 PC의 브라우저 창</strong>으로 열람(<code>Cockpit-Dashboard.cmd</code> 더블클릭 · 창 닫으면 꺼짐). <strong>기본 로컬 전용</strong>, 타기기 원격 열람은 고급·옵트인.</p></div>
+        <div class="card"><h3>세션 기록 대시보드(선택)</h3><p>세션 로그를 <strong>이 PC의 브라우저 창</strong>으로 열람(바탕화면 <strong>'Cockpit Dashboard' 아이콘</strong> 또는 <code>Cockpit-Dashboard.cmd</code> 더블클릭 · 창 닫으면 꺼짐). <strong>기본 로컬 전용</strong>, 타기기 원격 열람은 고급·옵트인.</p></div>
         <div class="card"><h3>설치 마법사</h3><p>기본 사용자·메모리 디렉터리·선택 기능을 안내하고 충돌 검사·dry-run·롤백을 제공.</p></div>
       </div>
     </details>
@@ -116,7 +116,8 @@ bash plugin/dashboard/disable-remote.sh --apply</code></pre></div>
     <details class="fold" id="dashboard-local">
       <summary>세션 기록 대시보드 켜기 (로컬 · 선택)</summary>
       <p>설치 마법사에서 대시보드를 <strong>옵트인</strong>했다면(<code>/cockpit-setup</code>의 대시보드 스텝),
-        <code>Cockpit-Dashboard.cmd</code>를 <strong>더블클릭</strong>해 세션 기록을 이 PC의 브라우저 창으로 봅니다
+        바탕화면의 <strong>'Cockpit Dashboard' 아이콘</strong>(설치기가 만들어 둠)이나 <code>Cockpit-Dashboard.cmd</code>를 <strong>더블클릭</strong>해
+        세션 기록을 이 PC의 브라우저 창으로 봅니다
         (<a href="#downloads">아래 다운로드 표</a>). 서버 개념을 다룰 필요 없이, <strong>새로 켠 창을 닫으면 서버도 함께 꺼집니다</strong>(정확한 조건은 아래).</p>
       <ul class="boundary">
         <li><strong>이 PC 전용(로컬).</strong> 대시보드는 <code>127.0.0.1</code>에만 열려, 기본 설정에서는 다른 기기에서 접속되지 않습니다.</li>
@@ -147,14 +148,14 @@ bash plugin/dashboard/disable-remote.sh --apply</code></pre></div>
       <table class="dl">
         <thead><tr><th>산출물</th><th>대상</th><th>링크</th><th>SHA-256 / 서명</th></tr></thead>
         <tbody>
-          <tr><td><strong>원클릭 설치</strong></td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Cockpit-Install.cmd" rel="nofollow"><code>Cockpit-Install.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Install.cmd">SHA-256: d1acb3bfcc6202fca34268a726cce803c54e945c4a66d91e41e2d3c974d67041<br>(더블클릭 = ps1 자동 다운로드·해시 대조·실행)</code></td></tr>
-          <tr><td>세션 기록 대시보드</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Cockpit-Dashboard.cmd" rel="nofollow"><code>Cockpit-Dashboard.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Dashboard.cmd">SHA-256: 567174419ad280a239f9bbc6fe12d4a39a3f8fddac7702689e61151e476eaab7<br>(더블클릭 = 로컬 창 열람·창 닫으면 종료)</code></td></tr>
-          <tr><td>복구·재설치(문제 발생 시)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Cockpit-Repair.cmd" rel="nofollow"><code>Cockpit-Repair.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Repair.cmd">SHA-256: b4d3d352de1ae1cc67620d6e6f338ef4b23c5d109fed2975ebef8611e7138966<br>(더블클릭 = 재설치 · 배포판 내부 기억·설정·로그 소실 · 재입력 확인)</code></td></tr>
-          <tr><td>완전 제거</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Cockpit-Uninstall.cmd" rel="nofollow"><code>Cockpit-Uninstall.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Uninstall.cmd">SHA-256: 377ff85cf071e5da2e454e8c46feb01a129059844a1a5672ca363662a5be82ed<br>(더블클릭 = cc-cockpit 배포판만 삭제 · 타 배포판 미접촉)</code></td></tr>
-          <tr><td>WSL2 배포판 이미지</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/cockpit-wsl.tar.gz" rel="nofollow">cockpit-wsl.tar.gz</a></td><td><code class="cksum">SHA-256: 86d0e50400c6a97f1264811bf958c1a7f8cefa0eb6718d722b134a4bdf246a23<br>(부트스트랩이 import 전 자동 대조)</code></td></tr>
-          <tr><td>PowerShell 부트스트랩</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Install-Cockpit.ps1" rel="nofollow">Install-Cockpit.ps1</a></td><td><code class="cksum">SHA-256: 940d3e699254e0051b7d2d0c7b5736b4d3d91b3656e19bf4176e261f9c7b3284<br>(서명 없음 — Get-FileHash 로 대조)</code></td></tr>
-          <tr><td>부트스트랩(스테이지드 폴백)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/Install-Cockpit-Staged.ps1" rel="nofollow">Install-Cockpit-Staged.ps1</a></td><td><code class="cksum">SHA-256: 905a6c19bf9dcb1d210852c01ad21beb881f9ff472eae56a650517ccc923c708<br>(서명 없음)</code></td></tr>
-          <tr><td>이미지 출처(provenance)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.5/provenance.json" rel="nofollow">provenance.json</a></td><td><code class="cksum">— 베이스 digest·SBOM·빌드로그</code></td></tr>
+          <tr><td><strong>원클릭 설치</strong></td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.6/Cockpit-Install.cmd" rel="nofollow"><code>Cockpit-Install.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Install.cmd">SHA-256: ae49857c9c8872d5864a081b5ea65c64a2c761880f7af59d146aad0da5d97b1e<br>(더블클릭 = ps1 자동 다운로드·해시 대조·실행)</code></td></tr>
+          <tr><td>세션 기록 대시보드</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.6/Cockpit-Dashboard.cmd" rel="nofollow"><code>Cockpit-Dashboard.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Dashboard.cmd">SHA-256: 567174419ad280a239f9bbc6fe12d4a39a3f8fddac7702689e61151e476eaab7<br>(더블클릭 = 로컬 창 열람·창 닫으면 종료)</code></td></tr>
+          <tr><td>복구·재설치(문제 발생 시)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.6/Cockpit-Repair.cmd" rel="nofollow"><code>Cockpit-Repair.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Repair.cmd">SHA-256: a04ad58c0e8eaea33f7140f4e98ac697a342065313d0af08da00690ebd3d8d85<br>(더블클릭 = 재설치 · 배포판 내부 기억·설정·로그 소실 · 재입력 확인)</code></td></tr>
+          <tr><td>완전 제거</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.6/Cockpit-Uninstall.cmd" rel="nofollow"><code>Cockpit-Uninstall.cmd</code></a></td><td><code class="cksum" data-artifact="Cockpit-Uninstall.cmd">SHA-256: 6b009a3442e102947eb11c1d19d3a0d17c0c041d53ca7463e26da75b70305745<br>(더블클릭 = cc-cockpit 배포판만 삭제 · 타 배포판 미접촉)</code></td></tr>
+          <tr><td>WSL2 배포판 이미지</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.6/cockpit-wsl.tar.gz" rel="nofollow">cockpit-wsl.tar.gz</a></td><td><code class="cksum">SHA-256: 60a84c7386f0803514ba47db8fc53b1e10d04025f7225502f775673291883fe0<br>(부트스트랩이 import 전 자동 대조)</code></td></tr>
+          <tr><td>PowerShell 부트스트랩</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.6/Install-Cockpit.ps1" rel="nofollow">Install-Cockpit.ps1</a></td><td><code class="cksum">SHA-256: c12c3fc865a74e80aa82cf3e4dadf557c6236e8448597c904eb19c97a973ac48<br>(서명 없음 — Get-FileHash 로 대조)</code></td></tr>
+          <tr><td>부트스트랩(스테이지드 폴백)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.6/Install-Cockpit-Staged.ps1" rel="nofollow">Install-Cockpit-Staged.ps1</a></td><td><code class="cksum">SHA-256: a567eb434211e329ce701abdcc6328e87b1d61ee75eec6f60e6b216f88911919<br>(서명 없음)</code></td></tr>
+          <tr><td>이미지 출처(provenance)</td><td>Windows</td><td><a href="https://github.com/sidoyu/cockpit/releases/download/v0.1.6/provenance.json" rel="nofollow">provenance.json</a></td><td><code class="cksum">— 베이스 digest·SBOM·빌드로그</code></td></tr>
           <tr><td>플러그인(행동층)</td><td>공통</td><td><a href="https://github.com/sidoyu/cockpit" rel="nofollow">cockpit@cc-companion</a></td><td><code class="cksum">— (마켓플레이스)</code></td></tr>
         </tbody>
       </table>
@@ -224,7 +225,7 @@ bash plugin/dashboard/disable-remote.sh --apply</code></pre></div>
 
 <footer class="site-footer">
   <div class="wrap">
-    <p>cc-companion · cockpit <span id="ver">v0.1.5</span> · 개인 학습용 도구(회사 공식 IT 배포물 아님).</p>
+    <p>cc-companion · cockpit <span id="ver">v0.1.6</span> · 개인 학습용 도구(회사 공식 IT 배포물 아님).</p>
     <p class="links">
       <a href="https://github.com/sidoyu/cockpit/blob/main/GOVERNANCE.md">거버넌스</a> ·
       <a href="https://github.com/sidoyu/cockpit/blob/main/README.md">패키지 README</a> ·
