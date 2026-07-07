@@ -15,7 +15,7 @@
 - **원격 대시보드(선택)**: 세션 로그 대시보드를 개인 VPN 내부 기기에서 보기/조종. 거버넌스·설정·`disable-remote`·접근 통제 레이어 제공(뷰어 본체는 공개 repo 참조). `plugin/dashboard/`.
 - **설치 마법사**: 기본 사용자·메모리 디렉터리·(선택)원격 제어를 안내하고, 충돌 검사·dry-run·롤백을 제공.
 
-> **현 빌드의 기능 기본값(v0.1.2, WSL2 골든 이미지)**: bypass=**ON**(사전적용) · effort=xhigh 베이크(단, 계정의 모델별 effort 한도에 따라 high 로 동작할 수 있음 — 라이브 실측) · model=`claude-opus-4-8[1m]` · 원격조종(claude.ai Remote Control)=**ON**(아웃바운드 HTTPS 전용·수신포트 없음·**로그인 후 재시작 시 활성**) · trust=자동 수락 · **플러그인 사전설치**(cockpit@cc-companion). 단 **외부 송신(egress)=OFF**(첫 실행 "동의 한 화면") · **자체호스팅 대시보드=비활성(명시 opt-in)**. 끄기/상태: GOVERNANCE.md 4·6장.
+> **현 빌드의 기능 기본값(v0.1.2, WSL2 골든 이미지)**: bypass=**ON**(사전적용) · effort=xhigh 베이크(단, 계정의 모델별 effort 한도에 따라 high 로 동작할 수 있음 — 라이브 실측) · model=`claude-opus-4-8[1m]` · 원격조종(claude.ai Remote Control)=**ON**(아웃바운드 HTTPS 전용·수신포트 없음·**로그인 후 재시작 시 활성**) · trust=자동 수락 · **플러그인 사전설치**(cockpit@cc-companion). 단 **외부 송신(egress)=OFF**(첫 실행 "동의 한 화면") · **자체호스팅 대시보드=기본 설치·기본 미기동**(설치≠기동 — 뷰어는 기본 부속으로 깔리되 자동시작·포트 개방 없음, 켜기는 아이콘·원격 노출은 명시 opt-in). 끄기/상태: GOVERNANCE.md 4·6장.
 >
 > **⚠ 출고 상태(v0.1.1 변경)**: 편의 설정(bypass·effort·model·원격조종·trust)은 동료가 "로그인만" 하도록 이미지에 **사전적용 출고**한다(2026-06-26 결정). **끝까지 OFF 유지 불변식**(이미지에 절대 굽지 않음)은 ① egress 동의 마커 ② 자체호스팅 대시보드 자동시작 ③ 비밀/자격증명 — `scripts/smoke-image.sh` 가 빌드마다 검증한다. (bypass 는 CLAUDE.md "멈춰 질문" 1차 방어와 **반드시 동반**해 출고된다.)
 

@@ -246,6 +246,70 @@ def _aside_existing(paths, stamp, dry_run, moved):
         moved.append((p, aside))
 
 
+# ── #8 복원 carry-forward: 온보딩 state 는 백업값으로 되돌리지 않고 현재값을 유지 ──────────
+# 근거(설계 §5.4): 이 두 파일은 "현재 배포판의 설치 결정·egress 동의 상태"다. 복원은 STATE_DIR
+#   루트를 통째 move-aside 후 tar 멤버만 추출하므로, 단순 '복원 제외'로 두면 현재 파일이 aside 로
+#   빠지고 새 루트엔 안 들어와 소실된다(제외=삭제). 특히 setup_complete 를 옛 백업값으로 되돌리면
+#   새 설치에서 동의 안 한 egress 가 조용히 켜질 수 있어(C1 정신) 위험. → 현재값을 앞으로 나른다:
+#   ①복원 전 캡처 → ②move-aside+추출(현행) → ③추출 후 현재값으로 되돌려 씀(현재 없었으면 제거).
+CARRY_FORWARD_FILES = ("installer-onboarding.json", "setup_complete")   # STATE_DIR 기준 상대명
+
+
+def _capture_carry_forward():
+    """복원 전 STATE_DIR 의 carry-forward 파일 현재 상태를 캡처.
+    반환: {relname: (exists: bool, data: bytes|None, mode: int|None)}. 읽기 실패는 data=None(경고)."""
+    snap = {}
+    for rel in CARRY_FORWARD_FILES:
+        p = os.path.join(STATE_DIR, rel)
+        if os.path.isfile(p):
+            try:
+                with open(p, "rb") as f:
+                    data = f.read()
+                snap[rel] = (True, data, os.stat(p).st_mode & 0o777)
+            except OSError as e:
+                snap[rel] = (True, None, None)
+                print("  ⚠ 온보딩 상태 캡처 실패(%s): %s — 이 파일은 백업값이 남을 수 있음." % (p, e),
+                      file=sys.stderr)
+        else:
+            snap[rel] = (False, None, None)
+    return snap
+
+
+def _apply_carry_forward(snap):
+    """복원 후 carry-forward 파일을 '현재값'으로 되돌림(백업값 무시). 현재 없었으면 제거.
+    반환: 되돌린 항목 라벨 목록(보고용)."""
+    restored = []
+    os.makedirs(STATE_DIR, exist_ok=True)
+    for rel in CARRY_FORWARD_FILES:
+        p = os.path.join(STATE_DIR, rel)
+        exists, data, mode = snap.get(rel, (False, None, None))
+        if exists:
+            if data is None:
+                continue   # 캡처 실패분 — 덮어쓸 현재값 없음(위에서 이미 경고)
+            fd, tmp = tempfile.mkstemp(dir=STATE_DIR, prefix=".carry-")
+            try:
+                with os.fdopen(fd, "wb") as out:
+                    out.write(data)
+                os.chmod(tmp, mode or 0o600)
+                os.replace(tmp, p)
+            except Exception:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
+            restored.append(rel)
+        else:
+            # 현재 없었음 → 백업이 넣었으면 제거(현재 부재 유지 = 백업값 무시)
+            if os.path.lexists(p):
+                try:
+                    os.remove(p)
+                    restored.append(rel + "(제거)")
+                except OSError as e:
+                    print("  ⚠ 온보딩 상태 제거 실패(%s): %s" % (p, e), file=sys.stderr)
+    return restored
+
+
 def do_restore(args):
     arc = _pick_archive(args)
     if not arc:
@@ -293,6 +357,15 @@ def do_restore(args):
                         if (os.path.isdir(p) and os.listdir(p)) or os.path.isfile(p)}
         moved = []
         n_files = 0
+        # #8: carry-forward 는 STATE_DIR(cc-companion)이 실제 복원 대상(move-aside 되는 경우)일 때만
+        #   의미가 있다. 백업에 cc-companion 이 없으면 STATE_DIR 은 손대지 않으므로(현재값 그대로)
+        #   carry-forward 도 no-op — 무관한 복원에서 빈 STATE_DIR 생성·재쓰기 같은 부수효과를 피한다(GAP3).
+        state_target = STATE_DIR in targets
+        if state_target:
+            print("  온보딩 상태(installer-onboarding.json·setup_complete)는 현재값 유지 — "
+                  "백업값으로 되돌리지 않음(#8 carry-forward).")
+        # move-aside 로 STATE_DIR 이 옮겨지기 전에 현재 온보딩 state 를 캡처(apply·대상일 때만).
+        carry_snap = _capture_carry_forward() if (apply_ and state_target) else None
         try:
             _aside_existing(targets, stamp, dry_run=not apply_, moved=moved)
             for src_p, aside in moved:
@@ -328,6 +401,14 @@ def do_restore(args):
                     except OSError:
                         pass
                     raise
+
+            # #8: 추출 후 온보딩 state 를 현재값으로 되돌림(백업값 무시·현재 없었으면 제거).
+            # 실패 시 아래 except 가 전체 롤백(.pre-restore 원복) → 원래 현재값이 되돌아온다.
+            # carry_snap 은 STATE_DIR 이 복원 대상일 때만 non-None(GAP3).
+            if carry_snap is not None:
+                carried = _apply_carry_forward(carry_snap)
+                if carried:
+                    print("  온보딩 상태 유지(carry-forward·백업값 무시): %s" % ", ".join(carried))
         except Exception as e:
             if not apply_:
                 # dry-run 은 파일시스템을 바꾸지 않으므로(aside 도 미실행) 롤백 없이 보고만.

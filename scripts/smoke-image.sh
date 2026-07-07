@@ -543,6 +543,39 @@ else
   WARN "setup.py 미발견 또는 python3 없음 — 온보딩 기능 왕복 생략(정적 검사만 수행)"
 fi
 
+# ── 9c) install-viewer 실패 UX 토큰 계약(#13a·v0.1.9 설계 §7) ──
+# 오프라인/프록시/차단 실패 시 install-viewer.sh 가 stderr 마지막 줄에 INSTALL_VIEWER_FAIL=<class>
+# 를 반드시 emit(git 실패 분류 + die/set -e 는 trap 폴백=unknown) → ps1 Invoke-DashboardInstall 이
+# 한국어 완료화면으로 매핑(#16). 토큰이 사라지면 오프라인 대시보드 UX 가 사일런트로 후퇴한다.
+sec "9c) install-viewer 실패 토큰 계약(#13a)"
+_IV="$(ls "$ROOTFS"/home/*/.claude/plugins/cache/cc-companion/cockpit/*/dashboard/install-viewer.sh 2>/dev/null | sort -V | tail -1 || true)"
+[ -n "$_IV" ] || _IV="$(ls "$ROOTFS"/opt/cockpit/plugin/dashboard/install-viewer.sh 2>/dev/null | head -1 || true)"
+[ -n "$_IV" ] || _IV="plugin/dashboard/install-viewer.sh"   # repo 폴백(소스 계약 검증)
+if [ -f "$_IV" ] && command -v git >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+  _ivrc=0
+  _ivt="$(mktemp -d)"
+  cp "$_IV" "$_ivt/install-viewer.sh"
+  # 프록시/보안제품 환경에서 git 이 자격증명 프롬프트로 걸리는 것 방지 + 있으면 timeout 백스톱(NIT).
+  # env 는 리터럴 할당-프리픽스로(배열 확장은 bash 가 할당으로 인식 못 하고 명령어로 취급).
+  command -v timeout >/dev/null 2>&1 && _TO="timeout 30" || _TO=""
+  # (a) 분류 경로: 도달불가 호스트(.invalid = 예약 TLD, 네트워크 상태 무관 즉시 실패) → 클론 실패 →
+  #     rc≠0 + 토큰(network/unknown 등). 어떤 클래스든 토큰 존재가 계약.
+  printf 'VIEWER_REPO_URL=https://cockpit-smoke.invalid/x.git\nVIEWER_PIN=%040d\n' 0 > "$_ivt/viewer-pin.txt"
+  _out="$(HOME="$_ivt" CC_DASH_HOME="$_ivt/home_a" CC_DASH_CONF="$_ivt/none.env" GIT_TERMINAL_PROMPT=0 $_TO bash "$_ivt/install-viewer.sh" 2>&1)"; _r=$?
+  [ "$_r" -ne 0 ] || _ivrc=1
+  printf '%s\n' "$_out" | tail -1 | grep -q 'INSTALL_VIEWER_FAIL=' || _ivrc=1
+  # (b) trap 폴백: 형식 오류 핀(early die·클론 도달 전) → 토큰 unknown 보장.
+  printf 'VIEWER_REPO_URL=https://cockpit-smoke.invalid/x.git\nVIEWER_PIN=not-hex\n' > "$_ivt/viewer-pin.txt"
+  _out2="$(HOME="$_ivt" CC_DASH_HOME="$_ivt/home_b" CC_DASH_CONF="$_ivt/none.env" GIT_TERMINAL_PROMPT=0 $_TO bash "$_ivt/install-viewer.sh" 2>&1)"; _r2=$?
+  [ "$_r2" -ne 0 ] || _ivrc=1
+  printf '%s\n' "$_out2" | tail -1 | grep -q 'INSTALL_VIEWER_FAIL=unknown' || _ivrc=1
+  rm -rf "$_ivt"
+  [ "$_ivrc" -eq 0 ] && OK "install-viewer 실패 토큰 계약(분류 rc≠0 + trap 폴백 unknown·#16)" \
+    || FAIL "install-viewer 실패 토큰 회귀 — 오프라인 대시보드 UX 사일런트 후퇴(#16/#13a)"
+else
+  WARN "install-viewer.sh 미발견 또는 git/python3 없음 — 실패 토큰 계약 검사 생략"
+fi
+
 # ── 결과 ──
 echo ""
 echo "────────────────────────────────────────────"

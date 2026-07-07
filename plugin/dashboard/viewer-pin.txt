@@ -3,4 +3,4 @@
 # 갱신 절차: 새 known-good 커밋 검증(allowlist·bind·idle-exit 스모크, plugin/dashboard/README
 # "뷰어 버전 고정") 후 이 파일만 갱신. 수기 전사 금지 — git rev-parse 출력을 기계 복사.
 VIEWER_REPO_URL=https://github.com/sidoyu/claude-session-dashboard.git
-VIEWER_PIN=9f2bdba6d6f563569bd5d6b5a20495f2355b09c9
+VIEWER_PIN=6c9da25cff59a78e9efd13fdbb692c739a7cd1d7

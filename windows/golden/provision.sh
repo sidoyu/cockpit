@@ -382,7 +382,14 @@ cmd_start() {
   local port; port=$(_port)
   if _listening "$port"; then
     if _server_alive "$port"; then
-      note "이미 실행 중(포트 $port)."; result ALREADY "$port"; return 0
+      note "이미 실행 중(포트 $port)."
+      # 자가치유(#7): 살아있는 서버는 convert 를 다시 안 돌려 index 가 옛 상태로 굳는다(빈 상태로
+      # 뜬 뒤 세션이 쌓인 경우 — ALREADY 는 아래 convert 블록 이전에 반환하므로). stale 판정 없이
+      # 항상 백그라운드 재변환 1회: convert 는 jsonl size 대조로 변경분만 재생성(저비용)·setsid -f
+      # 로 orphan 해 호출측(.cmd for /f) hang 방지·ALREADY 응답 지연 없음(동기 변환 안 함).
+      ( cd "$DASH_HOME" && setsid -f timeout 300 python3 convert_session.py >>"$LOG" 2>&1 ) 2>/dev/null
+      chmod 600 "$LOG" 2>/dev/null || true
+      result ALREADY "$port"; return 0
     fi
     note "포트 $port 를 무관 프로세스가 사용 중 — 대시보드를 띄울 수 없습니다."
     result ERROR "$port"; return 4
@@ -548,8 +555,17 @@ case "${1:-}" in
     [ -f "$TOOL" ] || _die "install-viewer.sh 가 없습니다: $TOOL"
     exec bash "$TOOL"
     ;;
+  backup)
+    # 기억·상태 백업/복원(#9 Uninstall 자동백업·#3 복원). 인자는 backup.py 로 그대로 전달
+    #   (없음=백업 생성 · --restore --apply --dir ...=복원). CC_BACKUP_DIR 등 env 는 호출자가 지정.
+    shift
+    PLUG="$(_resolve_plugin)" || exit 3
+    TOOL="$PLUG/hooks/memory/backup.py"
+    [ -f "$TOOL" ] || _die "backup.py 가 없습니다: $TOOL"
+    exec python3 "$TOOL" "$@"
+    ;;
   *)
-    echo "usage: cockpit-onboard {setup <args...>|install-dashboard}" >&2
+    echo "usage: cockpit-onboard {setup <args...>|install-dashboard|backup <args...>}" >&2
     exit 2
     ;;
 esac

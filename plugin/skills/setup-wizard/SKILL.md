@@ -35,7 +35,7 @@ cat ~/.claude/cc-companion/installer-onboarding.json 2>/dev/null
   검사한다**(마커=동의 게이트가 상위 개념이므로 먼저):
   1. `memory_egress`=true 인데 egress 마커(`setup_complete`) 부재 → **3.5 재안내**(설치기 부분 실패). 마커와 키가 둘 다 없어도 3.5 부터.
   2. (마커는 있는데) `memory_egress`=true 이고 추출 키 파일 부재(doctor 출력으로 확인) → **3.6 재안내**(설치기 키 등록 실패·백업 복원 직후 케이스 — 키는 백업에 포함되지 않는다).
-- **§3.7 은 state 만 보고 스킵하지 않는다** — `dashboard_viewer`=="installed" 여도 실물 확인(`/usr/local/bin/cockpit-dashboard status` 가 NOT_INSTALLED 가 아님)을 통과할 때만 스킵(백업 복원 후 state 만 살아 있는 오판 방지). 실물 부재 → 재설치 제안 / "skipped" → 재질문 없이 "원하면 이 단계만 다시 실행 가능" 1줄 / "failed" → 재시도 제안.
+- **§3.7 은 state 만 보고 스킵하지 않는다** — 뷰어는 v0.1.9 필수설치화라 정상값은 "installed"/"failed"("skipped" 는 구 설치·백업 잔재). `dashboard_viewer`=="installed" 여도 실물 확인(`/usr/local/bin/cockpit-dashboard status` 가 NOT_INSTALLED 가 아님)을 통과할 때만 스킵(백업 복원 후 state 만 살아 있는 오판 방지). 실물 부재/"failed" → 재설치·재시도 제안 / "skipped"(구 잔재) → "원하면 이 단계만 다시 실행 가능" 1줄.
 - 사용자가 설정 **변경**을 원하면 state 와 무관하게 해당 단계만 재실행한다(재설정 경로). 이 state 파일은 "설치기가 물었고 사용자가 답했다"의 기록일 뿐 — 현재 동작의 단일 출처는 항상 실물(egress 마커·키 파일·뷰어 설치 여부)이다.
 
 > ⚠ `setup_complete` 는 **egress 동의 게이트**다 — 온보딩 완료/재질문 스킵 판정에 이 파일을 읽지
@@ -115,17 +115,18 @@ egress 를 켜도 **개인 Anthropic API 키가 없으면 자동추출은 동작
 - 키 파일은 0600 로 저장되므로 공유 PC 라도 본인 계정 밖에선 안 보인다. 키가 노출됐다고 판단되면 콘솔에서 **회전(revoke→재발급)** 후 `set-extraction-key` 재등록.
 - `ANTHROPIC_API_KEY`(순정 이름)를 셸에 export 하면 claude.ai Remote Control 이 거부되므로, **이 키 파일 방식** 또는 `ANTHROPIC_API_KEY_FOR_SCRIPTS` 를 쓴다.
 
-### 3.7 대시보드(세션 열람) 결정 (선택 — 멈춰 질문)
-"세션 기록을 브라우저로 보는 **대시보드를 설치**할까요?"를 **명시적으로** 묻는다. 반드시 함께 고지:
-- 이것은 **로컬 민감 로그 뷰어**다 — 세션 로그(프롬프트·파일 경로·업무 내용)가 브라우저로 열린다. **공유 PC·회사 보안정책 기기·화면공유 중이면 설치하지 말 것**(`plugin/dashboard/README.md` 필독).
-- 설치해도 **자동시작·포트 개방은 없다**(설치≠기동). 켜는 것은 항상 명시적: Windows **바탕화면의 'Cockpit Dashboard' 아이콘** 더블클릭(설치기가 만들어 둠 — 열면 켜지고 창 닫으면 꺼짐; 아이콘이 없으면 릴리스의 `Cockpit-Dashboard.cmd` 를 받아 더블클릭) 또는 WSL 안 `/usr/local/bin/cockpit-dashboard start`.
-- 설치에 네트워크가 필요하다(공개 뷰어를 핀 커밋으로 클론).
+### 3.7 대시보드(세션 열람) 확인·재시도 (필수 부속 — 설치기가 기본 설치)
+세션 대시보드 뷰어는 **설치기(Install-Cockpit.ps1)가 기본 부속으로 자동 설치**한다(v0.1.9 필수설치화·모든 설치 경로). 이 스텝은 **옵트인 질문이 아니라 설치 상태 확인·재시도**다:
+- **먼저 실물 확인** — `doctor`(5단계)의 뷰어 항목이 "설치됨"이면 안내만 하고 넘어간다. **미설치/설치 실패**(오프라인·프록시·GitHub 차단으로 설치기 클론이 실패)면 재설치를 제안한다.
+- 이것은 **로컬 민감 로그 뷰어**다 — 세션 로그(프롬프트·파일 경로·업무 내용)가 브라우저로 열린다. 설치 자체는 기본이지만, **켜기(아이콘 더블클릭)는 공유 PC·회사 보안정책 기기·화면공유 중이면 하지 말 것**(`plugin/dashboard/README.md` 필독).
+- **자동시작·포트 개방은 없다**(설치≠기동). 켜는 것은 항상 명시적: Windows **바탕화면의 'Cockpit Dashboard' 아이콘** 더블클릭(설치기가 만들어 둠 — 열면 켜지고 창 닫으면 꺼짐; 아이콘이 없으면 릴리스의 `Cockpit-Dashboard.cmd` 를 받아 더블클릭) 또는 WSL 안 `/usr/local/bin/cockpit-dashboard start`.
+- 설치·재설치에 네트워크가 필요하다(공개 뷰어를 핀 커밋으로 클론).
 
-동의하면 실행:
+미설치/설치 실패면 재시도 실행:
 ```
 bash "${CLAUDE_PLUGIN_ROOT}/dashboard/install-viewer.sh"
 ```
-기본값 = 호스트 본인 localhost 열람 전용(bind 127.0.0.1·allow_cidr 127.0.0.1/32). 다른 기기(폰 등) 열람은 고급 사용 — README 의 "자가검증(필수)"을 통과한 뒤에만 직접 변경하도록 안내한다. 거절하면 건너뛴다(나중에 이 스텝만 다시 실행 가능).
+기본값 = 호스트 본인 localhost 열람 전용(bind 127.0.0.1·allow_cidr 127.0.0.1/32). 다른 기기(폰 등) 열람은 고급 사용 — README 의 "자가검증(필수)"을 통과한 뒤에만 직접 변경하도록 안내한다. 이미 설치돼 있으면 재실행은 멱등(핀 재확인)이라 건너뛰어도 된다.
 
 ### 4. 설치 (apply)
 ```

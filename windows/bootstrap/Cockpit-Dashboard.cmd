@@ -121,8 +121,10 @@ pause
 exit /b 1
 
 :notinstalled
-echo [cockpit] Dashboard viewer is not installed yet.
-echo [cockpit] Inside Claude Code run /cockpit-setup and opt in to the dashboard step.
+echo [cockpit] Dashboard viewer is not installed (install did not complete).
+echo [cockpit] It is a required component, normally installed automatically at setup.
+echo [cockpit] Check your internet connection, then double-click this icon again to
+echo [cockpit] retry - or inside Claude Code run /cockpit-setup to reinstall it.
 pause
 exit /b 3
 

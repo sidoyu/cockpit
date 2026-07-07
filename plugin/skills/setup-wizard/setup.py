@@ -360,7 +360,8 @@ def doctor():
     # (포트 LISTEN 탐지는 socket 이라 크로스플랫폼 — 실제 가동 여부의 1차 신호.)
     dash_conf = os.path.expanduser("~/.config/cockpit/dashboard.env")
 
-    # 뷰어 설치 상태(옵트인·§4-4) — viewer-pin.txt(단일 출처)와 HEAD 대조. 미설치=정상(INFO).
+    # 뷰어 설치 상태(필수 부속·§4-4·v0.1.9 필수설치화) — viewer-pin.txt(단일 출처)와 HEAD 대조.
+    # 미설치 = 설치 실패 상태(WARN·#18) — 필수설치화 후 정상값은 '설치됨'.
     dash_home = os.path.expanduser(os.environ.get("CC_DASH_HOME")
                 or (os.path.exists(dash_conf) and _conf_value(dash_conf, "CC_DASH_HOME")) or "~/claude-logs")
     pin_file = os.path.join(PLUGIN_ROOT, "dashboard", "viewer-pin.txt")
@@ -379,10 +380,56 @@ def doctor():
         else:
             _p(WARN, "대시보드 뷰어 핀 불일치/판독불가(HEAD=%s·핀=%s) — dashboard/install-viewer.sh 재실행으로 핀 복귀: %s"
                % ((head or "?")[:7], (pin or "?")[:7], dash_home))
+        # #11: 뷰어는 설치됐는데 index.html 이 없으면 첫 브라우저 접속이 404(빈상태 index 미생성·
+        #   옛 뷰어·.gitignore 로 클론에 미포함). #5(빈상태 index)·#7(자가치유)의 doctor 측 안전망.
+        if not os.path.isfile(os.path.join(dash_home, "index.html")):
+            _p(WARN, "대시보드 뷰어는 설치됐으나 세션 목록(index.html) 미생성 — 첫 열람 404 위험. "
+                     "'cockpit-dashboard start'(자가치유 재변환) 또는 dash_home 에서 convert_session.py 재실행: %s" % dash_home)
     elif os.path.isdir(dash_home):
         _p(WARN, "대시보드 경로가 git 클론이 아님(%s) — 핀 검증 불가(수동 설치본?). 접근통제 자가검증은 README 참조." % dash_home)
     else:
-        _p(INFO, "대시보드 뷰어 미설치(옵트인 — /cockpit-setup 대시보드 스텝에서 설치)")
+        _p(WARN, "세션 대시보드 뷰어 미설치/설치 실패 — 필수 부속입니다. 인터넷 연결 후 바탕화면 "
+                 "'Cockpit Dashboard' 아이콘 재실행 또는 dashboard/install-viewer.sh 로 재시도: %s" % dash_home)
+
+    # #12: 설치기 온보딩 state(installer-onboarding.json) 무결성 — 마커·키·뷰어 실물 3자 대조.
+    #   state 는 "설치기가 물은 것"의 기록이고 현재 동작 판정은 실물(SKILL §0.2). doctor 는 불일치를
+    #   관측·안내만(rc 무변경). #8 이 대부분 예방하지만 구 백업·부분 실패 잔여를 여기서 포착.
+    installer_state = os.path.join(STATE_DIR, "installer-onboarding.json")
+    if os.path.isfile(installer_state):
+        st = None
+        try:
+            with open(installer_state, encoding="utf-8") as f:
+                st = json.load(f)
+        except Exception as e:
+            _p(WARN, "설치기 온보딩 상태 파일을 읽지 못함(%s): %s — 손상 가능. 첫 실행 /cockpit-setup 이 전체 질문." % (installer_state, e))
+        if st is not None and not isinstance(st, dict):
+            _p(WARN, "설치기 온보딩 상태 최상위가 JSON 객체가 아님(%s) — 손상 가능. /cockpit-setup 재실행 권장." % installer_state)
+        if isinstance(st, dict):
+            # 손상 문자열("off"/"false")을 true 로 오판하지 않도록 정확히 boolean True 만 on 취급.
+            egress_state = (st.get("memory_egress") is True)
+            dash_state = st.get("dashboard_viewer")
+            marker = os.path.join(STATE_DIR, "setup_complete")
+            viewer_present = os.path.isdir(os.path.join(dash_home, ".git"))
+            mism = 0
+            # ① egress=on 인데 동의 마커 부재 → 설치기 부분 실패(§3.5 재안내 지점)
+            if egress_state and not os.path.isfile(marker):
+                mism += 1
+                _p(WARN, "온보딩 불일치: state=egress on 인데 동의 마커(setup_complete) 부재 — 설치기 부분 "
+                         "실패. 자동추출은 꺼진 상태(안전). /cockpit-setup 3.5 재안내.")
+            # ② egress=on 인데 키(파일·env 어디에도) 부재 → 복원 직후 키 소실 등(§3.6 재안내·키는 백업 미포함)
+            if egress_state and not has_key:
+                mism += 1
+                _p(WARN, "온보딩 불일치: state=egress on 인데 추출 키 부재(파일·env 모두) — 복원 직후 키 소실 "
+                         "가능(키는 백업 미포함). 자동추출은 no-op. 재등록: setup.py set-extraction-key.")
+            # ③ dashboard_viewer=installed 인데 뷰어 실물 부재 → 복원 후 state 만 생존 오판(#8 잔여)
+            if dash_state == "installed" and not viewer_present:
+                mism += 1
+                _p(WARN, "온보딩 불일치: state=대시보드 '설치됨' 인데 뷰어 실물 부재(%s) — 복원 후 state 만 "
+                         "생존했을 수 있음. 재설치: dashboard/install-viewer.sh." % dash_home)
+            if not mism:
+                _p(OK, "설치기 온보딩 state 무결성: 마커·키·뷰어 실물과 일치(source=%s)." % st.get("source", "?"))
+    else:
+        _p(INFO, "설치기 온보딩 상태 파일 없음 — 마법사 전체 질문 경로(설치기 미기록/건너뜀). 정상일 수 있음.")
 
     # 노출 안전(Codex 4d): bind 가 loopback 이 아니면 개인 세션 로그가 네트워크 대역에 열릴 수 있다.
     _bind_srcs = []

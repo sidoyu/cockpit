@@ -125,6 +125,29 @@ foreach ($lf in $launcherFiles) {
   else { $fail = 1; Err "${name}: 배포판명 allowlist 강화(^cc-[A-Za-z0-9._-]+`$) 누락(발견5)." }
 }
 
+# ── 4) 대시보드 필수설치 실패 흡수(#13b·v0.1.9 설계 §7) ──
+# Invoke-DashboardInstall 이 실패해도 설치가 계속(비치명·exit 0)되고, 폼 제출 경로가
+# apply-installer-onboarding 에 --dashboard <§9.4 실측값> 을 전달하는지 ps1 소스로 정적 검증한다.
+# 실 wsl 왕복(스텁 rc≠0 전 경로)은 실기 매트릭스 오프라인 경로 소관 — 여기선 분기·인자 조립 회귀만.
+Info "4) 대시보드 필수설치 실패 흡수(#13b)"
+$dsrc = Get-Content -Raw $ps1
+# (a) 실패 시 Status='failed' 반환(die 없이 계속 = 비치명)
+if ($dsrc -match "Status\s*=\s*'failed'") { Ok "Invoke-DashboardInstall 실패 반환(Status='failed') 존재 — 비치명 흡수" }
+else { $fail = 1; Err "Invoke-DashboardInstall 실패 반환 경로 부재 — 비치명 흡수 회귀(#16/#13b)." }
+# (b) §9.4 필수설치 호출이 실재하고 try/catch fail-open 으로 감싸짐
+if (($dsrc -match 'Invoke-DashboardInstall -DistroName') -and ($dsrc -match '\$DashboardResult = @\{')) {
+  Ok "§9.4 필수설치 호출 + fail-open 기본값 존재"
+} else { $fail = 1; Err "§9.4 Invoke-DashboardInstall 호출/기본값 부재 — 필수설치화 회귀(#15)." }
+# (c) 폼 apply 의 --dashboard 인자가 §9.4 결과(DashboardStatus)로 조립됨
+if (($dsrc -match '--dashboard \$dash') -and ($dsrc -match '\$dash = if \(\$DashboardStatus\)')) {
+  Ok "apply-installer-onboarding --dashboard 가 §9.4 실측값(DashboardStatus) 전달"
+} else { $fail = 1; Err "--dashboard 인자가 DashboardStatus 로 조립되지 않음 — 폼 apply 회귀." }
+# (d) Invoke-OnboardApply 안에 install-dashboard(폼 조건부 설치) 부재(D2)
+$applyFn = [regex]::Match($dsrc, '(?s)function Invoke-OnboardApply\s*\{.*?\n\}')
+if ($applyFn.Success -and ($applyFn.Value -notmatch 'install-dashboard')) {
+  Ok "Invoke-OnboardApply 에 폼 조건부 대시보드 설치 없음(D2)"
+} else { $fail = 1; Err "Invoke-OnboardApply 안 install-dashboard 잔존 또는 함수 파싱 실패(D2)." }
+
 Write-Host ""
-if ($fail -eq 0) { Info "OK — 안전 게이트 발화 + 서명 점검 + 런처 불변식 통과."; exit 0 }
+if ($fail -eq 0) { Info "OK — 안전 게이트 발화 + 서명 점검 + 런처 불변식 + 필수설치 흡수 통과."; exit 0 }
 else { Err "실패 — 위 항목 확인."; exit 1 }

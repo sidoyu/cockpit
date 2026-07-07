@@ -21,6 +21,31 @@ PIN_FILE="$SCRIPT_DIR/viewer-pin.txt"
 say() { printf '%s\n' "$*"; }
 die() { printf '[install-viewer] 오류: %s\n' "$*" >&2; exit 1; }
 
+# ── 실패 UX 계약(#16·설계 §4.1): nonzero exit 시 stderr 마지막 줄에 표준 토큰을 반드시 emit.
+#   ps1(Invoke-DashboardInstall)이 이 토큰을 한국어 완료화면 문구로 매핑. git clone/fetch 실패는
+#   stderr 를 _classify_git_err 로 분류해 FAIL_CLASS 지정, 그 외 실패(set -e·die)는 unknown 강제.
+#   성공 경로(exit 0)와 기존 정직 에러 문구는 그대로. 토큰은 ASCII → ps1 출력 인코딩과 무관.
+FAIL_CLASS=""
+_on_exit() {
+  local rc=$?
+  if [ "$rc" -ne 0 ]; then
+    printf 'INSTALL_VIEWER_FAIL=%s\n' "${FAIL_CLASS:-unknown}" >&2
+  fi
+}
+trap _on_exit EXIT
+
+_classify_git_err() {
+  # git clone/fetch stderr → 표준 클래스. 우선순위: proxy → tls → github-blocked → network → unknown.
+  # (403 메시지에도 'unable to access' 가 붙으므로 github-blocked 를 network 보다 먼저 판정.)
+  case "$1" in
+    *[Pp]roxy*|*407*)                                                     printf 'proxy' ;;
+    *certificate*|*SSL*|*TLS*|*"self-signed"*|*"self signed"*|*gnutls_handshake*|*schannel*) printf 'tls' ;;
+    *403*|*"Repository not found"*|*"Permission denied"*|*"Authentication failed"*|*"could not read Username"*) printf 'github-blocked' ;;
+    *"Could not resolve host"*|*"Temporary failure in name resolution"*|*"unable to access"*|*"Failed to connect"*|*"Couldn't connect"*|*timeout*|*"timed out"*|*"Operation timed out"*|*"Connection refused"*|*"Connection timed out"*|*"Network is unreachable"*) printf 'network' ;;
+    *)                                                                    printf 'unknown' ;;
+  esac
+}
+
 [ -f "$PIN_FILE" ] || die "viewer-pin.txt 없음: $PIN_FILE"
 VIEWER_REPO_URL="$(grep -E '^VIEWER_REPO_URL=' "$PIN_FILE" | head -1 | cut -d= -f2-)"
 VIEWER_PIN="$(grep -E '^VIEWER_PIN=' "$PIN_FILE" | head -1 | cut -d= -f2-)"
@@ -54,10 +79,18 @@ if [ -e "$DASH_HOME" ]; then
   ORIGIN="$(git -C "$DASH_HOME" remote get-url origin 2>/dev/null || true)"
   [ "$ORIGIN" = "$VIEWER_REPO_URL" ] || die "$DASH_HOME 의 origin 이 다름($ORIGIN) — 다른 저장소를 덮지 않습니다."
   say "[1] 기존 클론 재사용 — fetch 후 핀 checkout"
-  git -C "$DASH_HOME" fetch --quiet origin
+  if ! _git_err="$(git -C "$DASH_HOME" fetch --quiet origin 2>&1 1>/dev/null)"; then
+    [ -n "$_git_err" ] && printf '%s\n' "$_git_err" >&2
+    FAIL_CLASS="$(_classify_git_err "$_git_err")"
+    die "뷰어 fetch 실패 — 네트워크/프록시/GitHub 접근 확인(상세는 위 git 메시지)"
+  fi
 else
   say "[1] 뷰어 클론"
-  git clone --quiet "$VIEWER_REPO_URL" "$DASH_HOME"
+  if ! _git_err="$(git clone --quiet "$VIEWER_REPO_URL" "$DASH_HOME" 2>&1 1>/dev/null)"; then
+    [ -n "$_git_err" ] && printf '%s\n' "$_git_err" >&2
+    FAIL_CLASS="$(_classify_git_err "$_git_err")"
+    die "뷰어 클론 실패 — 네트워크/프록시/GitHub 접근 확인(상세는 위 git 메시지)"
+  fi
 fi
 git -C "$DASH_HOME" checkout --quiet "$VIEWER_PIN"
 HEAD="$(git -C "$DASH_HOME" rev-parse HEAD)"

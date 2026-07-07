@@ -28,18 +28,42 @@ echo   ============================================================
 echo(
 echo   Target WSL distro:  %DISTRO%   (no other distro is ever touched)
 echo(
-echo   This permanently DELETES the whole cc-cockpit distro. Everything
-echo   inside it - your memories, settings and logs - is lost and cannot
-echo   be recovered. Back up anything important first.
+echo   This permanently DELETES the whole cc-cockpit distro. Before deleting,
+echo   this tool first backs up your memories/state to a Windows folder that
+echo   survives the delete:
+echo       %USERPROFILE%\cockpit-backups
+echo   To reinstall later and restore them, run Cockpit-Install.cmd.
 echo(
 echo   To cancel, just close this window.
 echo(
-set "ANS="
-set /p "ANS=To proceed, type the distro name '%DISTRO%' exactly: "
-rem neutralize any double-quotes in the input before comparing (cmd parse-safety).
-set "ANS_SAFE=%ANS:"=_%"
-if not "%ANS_SAFE%"=="%DISTRO%" goto :mismatch
 
+rem ---- STEP 1: derive the /mnt backup path via wslpath - never hand-assemble
+rem      it (handles drive letter, spaces, OneDrive redirect, non-C drives). ----
+set "WINBK=%USERPROFILE%\cockpit-backups"
+set "MNTBK="
+for /f "usebackq delims=" %%P in (`"%WSL%" -d %DISTRO% -- wslpath -u "%WINBK%" 2^>nul`) do set "MNTBK=%%P"
+if "%MNTBK%"=="" goto :backupfail
+
+rem ---- STEP 2: auto-backup into that Windows folder. Pass the /mnt path via
+rem      WSLENV, not a bash string, so spaces or an apostrophe in the profile
+rem      path cannot break shell quoting. backup.py returns 0 after the tar is
+rem      finalized, or when there is nothing to back up - then no data is at risk.
+echo [cockpit] Backing up memories/state to: %WINBK%
+set "CC_BACKUP_DIR=%MNTBK%"
+set "WSLENV=CC_BACKUP_DIR"
+"%WSL%" -d %DISTRO% -- /usr/local/bin/cockpit-onboard backup 1>nul 2>nul
+if %errorlevel% neq 0 goto :backupfail
+
+rem ---- STEP 3a: backup step OK -> light yes/no confirmation. Name typing was
+rem      only friction; DISTRO is hard-coded so it never guarded the wrong distro.
+rem      Message avoids claiming a tar when there was simply nothing to back up.
+echo [cockpit] Backup step done. Any saved data is under: %WINBK%
+set "ANS="
+set /p "ANS=Delete cc-cockpit now? [Y/N]: "
+if /i "%ANS%"=="Y" goto :dodelete
+goto :cancelled
+
+:dodelete
 echo(
 echo [cockpit] Terminating and unregistering '%DISTRO%' ...
 "%WSL%" --terminate %DISTRO% 1>nul 2>nul
@@ -86,6 +110,29 @@ echo(
 pause
 endlocal
 exit /b 0
+
+:backupfail
+rem Backup did not complete (offline path-convert fail, no space, or a broken
+rem distro that cannot run the backup). Default is to abort. Deleting anyway is
+rem allowed only behind the strong confirmation (distro-name typing), so a user
+rem whose distro is too broken to back up can still reinstall.
+echo(
+echo [cockpit] WARNING: automatic backup did NOT complete.
+echo [cockpit] If you delete now, everything inside cc-cockpit is lost with
+echo [cockpit] NO backup and cannot be recovered. A broken distro may be unable
+echo [cockpit] to back up - deleting is then the only way to reinstall.
+echo(
+set "ANS="
+set /p "ANS=To delete WITHOUT a backup, type the distro name '%DISTRO%' exactly: "
+set "ANS_SAFE=%ANS:"=_%"
+if not "%ANS_SAFE%"=="%DISTRO%" goto :mismatch
+goto :dodelete
+
+:cancelled
+echo(
+echo [cockpit] Cancelled - nothing was deleted. Your distro and data are intact.
+pause
+exit /b 1
 
 :mismatch
 echo(

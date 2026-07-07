@@ -10,8 +10,10 @@
     • **별도 배포판**(기본 cc-cockpit, 이름은 'cc-' 접두 강제). 기존 Ubuntu 등 다른 WSL 배포판을 건드리지 않는다.
       임의 이름은 -AllowCustomDistroName 고위험 플래그로만 허용.
     • 관리자 권한을 스스로 올리지 않는다. WSL 미설치 시 사용자가 직접 실행할 명령만 안내하고 종료.
-    • 편의 설정(bypass·effort·model·원격조종·trust)은 이미지에 사전적용 출고. 단 **외부 송신(egress) 동의**·
-      자체호스팅 대시보드는 OFF — egress 는 첫 실행 /cockpit-setup 동의 한 화면, 나머지는 명시 설정 시에만.
+    • 편의 설정(bypass·effort·model·원격조종·trust)은 이미지에 사전적용 출고. **외부 송신(egress) 동의**는
+      OFF — 첫 실행 /cockpit-setup 동의 한 화면 또는 설치 폼에서만 켜진다.
+    • 세션 대시보드 뷰어는 기본 부속으로 자동 설치(설치≠기동 — 자동시작·포트 개방 없음, 켜기는 아이콘).
+      설치 실패(오프라인·프록시)는 비치명 — 설치는 계속되고 완료화면/도우미가 재시도를 안내한다.
 
   무결성: 이 배포본은 코드서명 인증서 미보유로 Authenticode 서명이 없다(unsigned).
     무결성은 다운로드한 .ps1·이미지의 SHA-256 을 웹 다운로드 표·이 스크립트의 핀과 대조해 보장한다:
@@ -26,8 +28,9 @@
 .PARAMETER Reinstall      같은 이름의 cockpit 배포판을 unregister 후 재설치(확인 프롬프트). 다른 배포판은 절대 미접촉.
 .PARAMETER SkipLaunch     설치 후 자동 진입하지 않음.
 .PARAMETER NoLauncher     원터치 런처(.cmd + 시작메뉴/바탕화면 바로가기) 생성을 건너뜀.
-.PARAMETER NoOnboardingGui 설치 말미 온보딩 폼(기억 자동추출·대시보드 선택·API 키 입력)을 생략.
-                          생략/무인 시 안전 기본값(추출 OFF·대시보드 미설치) — 첫 실행 /cockpit-setup 에서 동일 설정 가능.
+.PARAMETER NoOnboardingGui 설치 말미 온보딩 폼(기억 자동추출·API 키 입력)을 생략.
+                          생략/무인 시 안전 기본값(추출 OFF) — 첫 실행 /cockpit-setup 에서 동일 설정 가능.
+                          세션 대시보드는 폼과 무관하게 항상 설치 시도(필수 부속·설치≠기동).
 .PARAMETER AllowUnpinnedImage     핀-미사용(미발행 미리보기 / URL·해시 오버라이드)을 명시 허용(고위험).
 .PARAMETER AllowCustomDistroName  'cc-' 접두가 아닌 임의 배포판 이름을 명시 허용(고위험 — 기존 배포판 오접촉 위험).
 
@@ -54,10 +57,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ── 게시 시 치환되는 핀 고정값(빌드/릴리스 파이프라인이 채움) ──────────────
-$PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.7/cockpit-wsl.tar.gz'
-$PinnedSha256   = '9cf570809c30493cf8507fa948fcc9c0416238b39a600b5067beb74889ffc7ea'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
+$PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.8/cockpit-wsl.tar.gz'
+$PinnedSha256   = 'b74bf7c09bdc656e52b2df836caac2b3810a8f7661bb1778c451bae8902ed2c4'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
 $MarketplaceUrl = 'https://github.com/sidoyu/cockpit'                                  # /plugin marketplace add 실주소(게시자 sidoyu·cc-companion).
-$PinnedDashboardCmdUrl    = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.7/Cockpit-Dashboard.cmd'
+$PinnedDashboardCmdUrl    = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.8/Cockpit-Dashboard.cmd'
 $PinnedDashboardCmdSha256 = '567174419ad280a239f9bbc6fe12d4a39a3f8fddac7702689e61151e476eaab7'   # Cockpit-Dashboard.cmd SHA-256 (repo 파일 그대로 자산 업로드 — publish-gate §1d 가 재핀 강제).
 $PLACEHOLDER_HOSTS = @('example.invalid')
 
@@ -242,7 +245,7 @@ function Show-OnboardingForm {
   $form.FormBorderStyle = 'FixedDialog'
   $form.MaximizeBox = $false; $form.MinimizeBox = $false
   $form.StartPosition = 'CenterScreen'
-  $form.ClientSize = New-Object System.Drawing.Size(600, 645)
+  $form.ClientSize = New-Object System.Drawing.Size(600, 545)
   $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
   $form.TopMost = $true   # 콘솔 뒤에 숨어 '설치가 멈췄다'로 오인되는 것 방지
 
@@ -283,12 +286,23 @@ function Show-OnboardingForm {
   $optKey.Location = New-Object System.Drawing.Point(10, 22)
   $optKey.Size = New-Object System.Drawing.Size(556, 22)
   $memBox.Controls.Add($optKey)
-  $optKeyNote = New-Object System.Windows.Forms.Label
+  # #10 — console.anthropic.com 을 클릭 가능한 LinkLabel 로(LinkClicked → 기본 브라우저).
+  # 링크 영역은 런타임 IndexOf 로 계산(하드코딩 인덱스 취약성 회피). 접두 텍스트는 그대로.
+  $optKeyNote = New-Object System.Windows.Forms.LinkLabel
   $optKeyNote.Text = "세션이 끝날 때마다 대화를 자동 분석해 기억 후보를 쌓습니다. 본인 Anthropic API 키 필요`n" +
                      "(Claude 구독과 별개 과금) - 세션 1회 최대 약 50원, 보통 10원 안팎. 콘솔에서 사용량 한도`n" +
                      "(spend limit) 설정 권장. 발급: console.anthropic.com > API Keys > Create Key > Billing 등록."
   $optKeyNote.Location = New-Object System.Drawing.Point(28, 46)
   $optKeyNote.Size = New-Object System.Drawing.Size(538, 56)
+  $optKeyNote.LinkArea = New-Object System.Windows.Forms.LinkArea(0, 0)   # 기본 링크 없음(아래서 영역 지정)
+  $__linkTxt = 'console.anthropic.com'
+  $__linkIdx = $optKeyNote.Text.IndexOf($__linkTxt)
+  if ($__linkIdx -ge 0) {
+    $optKeyNote.LinkArea = New-Object System.Windows.Forms.LinkArea($__linkIdx, $__linkTxt.Length)
+  }
+  $optKeyNote.add_LinkClicked({
+    try { Start-Process 'https://console.anthropic.com/settings/keys' } catch {}
+  })
   $memBox.Controls.Add($optKeyNote)
   $keyLabel = New-Object System.Windows.Forms.Label
   $keyLabel.Text = 'Anthropic API 키(sk-ant-...):'
@@ -321,43 +335,29 @@ function Show-OnboardingForm {
   $memBox.Controls.Add($optNoKeyNote)
   $form.Controls.Add($memBox)
 
-  # ③ 대시보드 뷰어 옵트인(아이콘은 항상 생성 — 이 선택은 '뷰어 본체' 설치 여부)
-  $dashBox = New-Object System.Windows.Forms.GroupBox
-  $dashBox.Text = '세션 열람 대시보드 (선택)'
-  $dashBox.Location = New-Object System.Drawing.Point(12, 452)
-  $dashBox.Size = New-Object System.Drawing.Size(576, 126)
-  $dashBox.Enabled = $false
-  $dashChk = New-Object System.Windows.Forms.CheckBox
-  $dashChk.Text = '대시보드 뷰어 설치'
-  $dashChk.Location = New-Object System.Drawing.Point(10, 22)
-  $dashChk.Size = New-Object System.Drawing.Size(556, 22)
-  $dashBox.Controls.Add($dashChk)
-  $dashNote = New-Object System.Windows.Forms.Label
-  $dashNote.Text = "로컬 민감 로그 뷰어 - 세션 기록(프롬프트·파일 경로·업무 내용)이 브라우저로 열립니다.`n" +
-                   "공유 PC·회사 보안정책 기기·화면공유 중에는 설치하지 마세요. 설치해도 자동시작·포트 개방은`n" +
-                   "없습니다(켜기 = 바탕화면 'Cockpit Dashboard' 아이콘·창 닫으면 꺼짐). 설치에 네트워크 필요.`n" +
-                   "바탕화면 아이콘 자체는 항상 만들어집니다 - 이 선택은 뷰어 본체 설치 여부입니다."
-  $dashNote.Location = New-Object System.Drawing.Point(28, 46)
-  $dashNote.Size = New-Object System.Drawing.Size(538, 74)
-  $dashBox.Controls.Add($dashNote)
-  $form.Controls.Add($dashBox)
+  # ③ 세션 대시보드 안내(선택 아님 — 필수설치화·§9.4. 폼 옵트인 제거·설치≠기동 명시만).
+  $dashInfo = New-Object System.Windows.Forms.Label
+  $dashInfo.Text = "세션 열람 대시보드는 기본 부속으로 자동 설치됩니다(설치≠기동 — 자동시작·포트 개방 없음, " +
+                   "켜기 = 바탕화면 'Cockpit Dashboard' 아이콘·창 닫으면 꺼짐). 공유 PC·화면공유 중이면 켜지 마세요."
+  $dashInfo.Location = New-Object System.Drawing.Point(12, 452)
+  $dashInfo.Size = New-Object System.Drawing.Size(576, 40)
+  $form.Controls.Add($dashInfo)
 
   $btnApply = New-Object System.Windows.Forms.Button
   $btnApply.Text = '적용하고 계속'
-  $btnApply.Location = New-Object System.Drawing.Point(160, 592)
+  $btnApply.Location = New-Object System.Drawing.Point(160, 500)
   $btnApply.Size = New-Object System.Drawing.Size(180, 32)
   $btnApply.Enabled = $false
   $form.Controls.Add($btnApply)
   $btnSkip = New-Object System.Windows.Forms.Button
   $btnSkip.Text = '건너뛰기 (나중에 /cockpit-setup)'
-  $btnSkip.Location = New-Object System.Drawing.Point(356, 592)
+  $btnSkip.Location = New-Object System.Drawing.Point(356, 500)
   $btnSkip.Size = New-Object System.Drawing.Size(220, 32)
   $form.Controls.Add($btnSkip)
   $form.CancelButton = $btnSkip
 
   $govChk.add_CheckedChanged({
     $memBox.Enabled = $govChk.Checked
-    $dashBox.Enabled = $govChk.Checked
     $btnApply.Enabled = $govChk.Checked
   })
   $optKey.add_CheckedChanged({
@@ -380,7 +380,8 @@ function Show-OnboardingForm {
   $dr = $form.ShowDialog()
   $result = $null
   if ($dr -eq [System.Windows.Forms.DialogResult]::OK) {
-    $result = @{ Egress = $optKey.Checked; Key = $null; Dashboard = $dashChk.Checked }
+    # 대시보드는 폼 선택 대상 아님(§9.4 필수설치) — 결과에 Dashboard 키 없음(D3·apply 는 §9.4 실측값 사용).
+    $result = @{ Egress = $optKey.Checked; Key = $null }
     if ($optKey.Checked) { $result.Key = $keyBox.Text.Trim() }
   }
   $keyBox.Text = ''   # best-effort 소거(컨트롤 잔존 제거 — .NET string 불변성 한계는 인지)
@@ -411,9 +412,11 @@ function Invoke-OnboardKeyInject {
 }
 
 function Invoke-OnboardApply {
-  # 적용 순서 = 키 → 뷰어 → 상태 기록(마지막 1회) — 상태 기록 실패 시 파일이 안 남고,
+  # 적용 순서 = 키 → 상태 기록(마지막 1회) — 상태 기록 실패 시 파일이 안 남고,
   # 파일이 없으면 마법사가 전체 질문으로 폴백(안전 방향). 각 단계 실패는 Warn 후 계속.
-  param([string]$DistroName, [hashtable]$Choice)
+  # 대시보드는 §9.4(폼 밖·모든 경로)에서 이미 시도됨(D2·D3) — 여기선 그 실측 결과만 state 에
+  # 기록한다(폼 조건부 설치 블록 제거·publish-gate §sec 강제). $DashboardStatus = installed|failed.
+  param([string]$DistroName, [hashtable]$Choice, [string]$DashboardStatus)
   $keyReg = 'no'
   if ($Choice.Egress -and $Choice.Key) {
     $rc = Invoke-OnboardKeyInject -DistroName $DistroName -Key $Choice.Key
@@ -425,16 +428,7 @@ function Invoke-OnboardApply {
       Warn "키 등록 실패(코드 $rc) — 키 등록 전까지 자동추출은 동작하지 않습니다(no-op). 첫 실행 /cockpit-setup 3.6 단계에서 재등록하세요."
     }
   }
-  $dash = 'skipped'
-  if ($Choice.Dashboard) {
-    Info '대시보드 뷰어 설치(네트워크 필요·핀 커밋 클론)…'
-    & wsl.exe -d $DistroName -- /usr/local/bin/cockpit-onboard install-dashboard
-    if ($LASTEXITCODE -eq 0) { $dash = 'installed' }
-    else {
-      $dash = 'failed'
-      Warn "뷰어 설치 실패(코드 $LASTEXITCODE) — 아이콘은 미설치 안내를 표시합니다. 첫 실행 /cockpit-setup 3.7 단계에서 재시도하세요."
-    }
-  }
+  $dash = if ($DashboardStatus) { $DashboardStatus } else { 'failed' }
   $egress = 'off'; if ($Choice.Egress) { $egress = 'on' }
   & wsl.exe -d $DistroName -- /usr/local/bin/cockpit-onboard setup apply-installer-onboarding --governance-ack --memory-egress $egress --key-registered $keyReg --dashboard $dash --source installer
   # rc 구분(setup.py 계약): 2=state 기록 실패(파일 없음→마법사 전체 질문) / 1=state 성공·egress
@@ -446,15 +440,75 @@ function Invoke-OnboardApply {
   }
 }
 
+function Get-DashboardFailHint {
+  # INSTALL_VIEWER_FAIL 토큰 → 완료화면용 한국어 원인 추정(단일 지점 매핑·§4.1).
+  param([string]$Class)
+  switch ($Class) {
+    'github-blocked' { return 'GitHub 접근 차단(회사망/방화벽)' }
+    'proxy'          { return '프록시 인증/구성' }
+    'tls'            { return 'TLS/인증서 검사(보안 제품)' }
+    'network'        { return '네트워크 연결(오프라인/DNS/타임아웃)' }
+    default          { return '네트워크 또는 GitHub 접근 문제' }
+  }
+}
+
+function Invoke-DashboardInstall {
+  # #1·#15 — 세션 대시보드 필수설치(폼 밖·모든 경로 공통·D2·D3). best-effort·비치명(fail-open).
+  # 설치≠기동(D1): install-viewer.sh 는 자동시작·포트 LISTEN 을 하지 않는다(설치만).
+  # 반환: @{ Status='installed'|'failed'; Class; Code }. 실패 시 대화형 완료화면 블록은 §11 이
+  # 이 반환값으로 출력하고, 무인은 여기서 warn 1줄만(화면 없음). 전 경로 exit 0.
+  param([string]$DistroName, [string]$OnboardingBlocked)
+
+  Info '세션 대시보드 설치(필수 부속·네트워크 필요·설치≠기동)…'
+  $out = $null
+  $rc = -1   # 기본=실패. wsl.exe 가 던지면(미발견 등) stale $LASTEXITCODE(0) 오판 방지.
+  try {
+    $out = & wsl.exe -d $DistroName -- /usr/local/bin/cockpit-onboard install-dashboard 2>&1
+    $rc = $LASTEXITCODE
+  } catch {
+    $out = $_.Exception.Message
+    $rc = -1
+  }
+  if ($rc -eq 0) {
+    Info "세션 대시보드 설치됨(설치≠기동 — 켜기는 바탕화면 'Cockpit Dashboard' 아이콘)."
+    return @{ Status = 'installed'; Class = $null; Code = 0 }
+  }
+
+  # 실패 분류: install-viewer.sh 가 마지막 줄에 INSTALL_VIEWER_FAIL=<class> emit(trap 폴백=unknown).
+  # 토큰 부재 시 unknown 강제(이중 안전). ASCII 토큰이라 wsl 출력 인코딩과 무관.
+  $class = 'unknown'
+  foreach ($line in @($out)) {
+    if ([string]$line -match 'INSTALL_VIEWER_FAIL=([a-z-]+)') { $class = $Matches[1] }
+  }
+  if ($OnboardingBlocked) {
+    # 무인/비대화 — 완료화면 강조 불가(화면 없음) → warn 1줄. #17 cmd·#18 doctor 가 나중 시점 노출.
+    Warn "세션 대시보드 설치 실패(코드 $rc·$class) — 비치명. 인터넷 되는 곳에서 바탕화면 'Cockpit Dashboard' 아이콘 재실행 또는 /cockpit-setup 으로 재시도."
+  }
+  return @{ Status = 'failed'; Class = $class; Code = $rc }
+}
+
+# ── 9.3) 온보딩 GUI 가능 여부 "계산만"(폼 show/skip 실행은 §9.5) ─────────────
+# $OnboardingBlocked 를 여기서 먼저 계산한다 — §9.4 실패 UX 가 대화형/무인 분기에 이 값을 쓰기
+# 때문(Codex GAP3). 계산과 폼 실행 분리: 계산=§9.3, 폼 show/skip=§9.5.
 $OnboardingBlocked = $null
 try { $OnboardingBlocked = Test-OnboardingGuiBlocked } catch { $OnboardingBlocked = "감지 실패: $($_.Exception.Message)" }
+
+# ── 9.4) 세션 대시보드 필수설치(#1·#15) — 폼 밖·모든 경로 공통(D2·D3·fail-open) ──
+# 온보딩 폼(§9.5)의 show/skip 과 무관하게 모든 경로에서 시도(비대화·건너뜀·미동의 포함).
+# 실패해도 설치는 계속(비치명·#16). 대시보드 결과는 state 를 강제 생성하지 않는다(D3 — §9.5 폼
+# 제출 경로에서만 실측값을 apply 에 전달).
+$DashboardResult = @{ Status = 'failed'; Class = 'unknown'; Code = -1 }
+try { $DashboardResult = Invoke-DashboardInstall -DistroName $DistroName -OnboardingBlocked $OnboardingBlocked }
+catch { Warn "대시보드 설치 처리 오류(설치는 정상): $($_.Exception.Message) — 첫 실행 /cockpit-setup 에서 재시도." }
+
+# ── 9.5) 온보딩 폼(v0.1.8 흐름 유지·대시보드 GroupBox 제거) — $OnboardingBlocked 로 분기 ──
 if ($OnboardingBlocked) {
-  Info "온보딩 화면 생략($OnboardingBlocked) — 안전 기본값(자동추출 OFF·대시보드 미설치). 첫 실행 /cockpit-setup 에서 동일 설정 가능."
+  Info "온보딩 화면 생략($OnboardingBlocked) — 안전 기본값(자동추출 OFF). 대시보드는 위에서 이미 시도됨. 첫 실행 /cockpit-setup 에서 동일 설정 가능."
 } else {
   Info '온보딩 화면 표시(선택 옵션·API 키) — 창에서 선택을 마치면 설치가 이어집니다.'
   try {
     $OnboardingChoice = Show-OnboardingForm
-    if ($OnboardingChoice) { Invoke-OnboardApply -DistroName $DistroName -Choice $OnboardingChoice }
+    if ($OnboardingChoice) { Invoke-OnboardApply -DistroName $DistroName -Choice $OnboardingChoice -DashboardStatus $DashboardResult.Status }
     else { Info '온보딩 건너뜀 — 첫 실행 /cockpit-setup 에서 같은 설정을 안내합니다.' }
     $OnboardingChoice = $null   # best-effort 소거(키 원문 참조 해제)
   } catch {
@@ -524,10 +578,10 @@ function New-CockpitLauncher {
   return $cmdPath
 }
 
-# ── 10b) 대시보드 바탕화면 아이콘(선택 부속 · 실패해도 설치는 계속) ─────────
+# ── 10b) 대시보드 바탕화면 아이콘(기본 부속 · 실패해도 설치는 계속) ─────────
 # 더블클릭 = 대시보드 창 열림, 창 닫으면 서버도 꺼짐(Cockpit-Dashboard.cmd 의 창-수명 그대로).
-# 뷰어를 아직 옵트인하지 않았어도 아이콘은 정직하게 안내한다(.cmd 의 NOT_INSTALLED 경로:
-# "/cockpit-setup 에서 대시보드 스텝 옵트인" 메시지). 자산은 릴리스에서 받고 핀 해시로 검증.
+# 뷰어 설치가 실패한 상태(오프라인 등)라도 아이콘은 정직하게 안내한다(.cmd 의 NOT_INSTALLED 경로:
+# "인터넷 확인 후 재실행 또는 /cockpit-setup 재시도" 메시지·#17). 자산은 릴리스에서 받고 핀 해시로 검증.
 function New-DashboardLauncher {
   param([string]$Distro)
   if ($Distro -ne 'cc-cockpit') {
@@ -583,6 +637,18 @@ function New-DashboardLauncher {
 # ── 11) 안내 ──────────────────────────────────────────────────────────────
 Info "설치 완료 ✓  배포판 '$DistroName' 이 준비됐습니다(편의 설정 사전적용)."
 
+# 11a) 세션 대시보드만 실패 시 완료화면에 명시(#16·§4.1 — 비치명·대화형만 강조).
+# 무인 경로는 §9.4 에서 이미 warn 1줄을 냈다(화면 강조 불가) → 여기선 대화형만 블록 출력.
+if ($DashboardResult -and $DashboardResult.Status -eq 'failed' -and -not $OnboardingBlocked) {
+  $dashHint = Get-DashboardFailHint $DashboardResult.Class
+  Write-Host ""
+  Write-Host "[cockpit][안내] 세션 대시보드만 아직 설치하지 못했습니다 — 그 외 기능은 전부 정상입니다." -ForegroundColor Yellow
+  Write-Host "   원인 추정: $dashHint (코드 $($DashboardResult.Code))"
+  Write-Host "   → 인터넷 되는 곳에서 바탕화면 'Cockpit Dashboard' 아이콘을 다시 누르거나,"
+  Write-Host "     Claude 안에서 /cockpit-setup 으로 재시도하세요."
+  Write-Host ""
+}
+
 $LauncherCmd = $null
 $DashboardCmd = $null
 if (-not $NoLauncher) {
@@ -600,7 +666,7 @@ if ($LauncherCmd) {
   Write-Host "  • 진입:  wsl -d $DistroName"
 }
 if ($DashboardCmd) {
-  Write-Host "  • 바탕화면 'Cockpit Dashboard' 더블클릭 → 세션 대시보드(선택 기능·창 닫으면 꺼짐. 뷰어 미설치면 온보딩 재실행 또는 /cockpit-setup 옵트인 후 동작)."
+  Write-Host "  • 바탕화면 'Cockpit Dashboard' 더블클릭 → 세션 대시보드(기본 부속·창 닫으면 꺼짐. 설치 실패 상태면 인터넷 확인 후 아이콘 재실행 또는 /cockpit-setup 으로 재시도)."
 }
 Write-Host "  1) claude 로그인(최초 1회, 브라우저 OAuth): 실행 후 /login"
 Write-Host "  2) 로그인 후 claude 재시작 → claude.ai/code 원격조종 활성(최초 실행은 미로그인이라 원격이 조용히 꺼져 있음)."

@@ -301,6 +301,61 @@ else
   BLOCK "$PS1 가 없습니다(§1f)."
 fi
 
+# ── 1g) 대시보드 필수설치화 정적 불변식(v0.1.9 설계 §7·#1·#15·#16·#17·D2) ──
+# 대시보드 설치가 다시 폼 체크에 갇히면(D2 위반) 무인/미동의/건너뜀 경로가 미설치로 후퇴한다.
+sec "1g) 대시보드 필수설치화 불변식(v0.1.9)"
+if [ -f "$PS1" ]; then
+  # ① #1: 대시보드 설치를 폼 밖 공통 함수(Invoke-DashboardInstall)로 끌어올렸는가.
+  grep -q 'function Invoke-DashboardInstall' "$PS1" \
+    && OK "Invoke-DashboardInstall(폼 밖 필수설치) 함수 존재(#1)" \
+    || BLOCK "Invoke-DashboardInstall 부재 — 대시보드 필수설치화 회귀(#1)."
+  # ② #15: 모든 경로 공통 호출(폼 show/skip 분기 밖·§9.4)이 실재하고, 폼 분기(§9.5 `if ($OnboardingBlocked)`)
+  #    보다 **앞**에 있어야 한다(위치 검사 — 호출이 GUI 분기 안으로 이동하면 일부 경로 전용으로 후퇴·GAP3).
+  _call_ln="$(grep -n 'Invoke-DashboardInstall -DistroName' "$PS1" | head -1 | cut -d: -f1)"
+  # 폼 분기는 최상위(col 0) `if ($OnboardingBlocked) {` — 함수 내부(들여쓰기) 동명 분기와 구분(^앵커).
+  _form_ln="$(grep -n '^if (\$OnboardingBlocked) {' "$PS1" | head -1 | cut -d: -f1)"
+  if [ -z "$_call_ln" ]; then
+    BLOCK "Invoke-DashboardInstall 호출 부재 — 필수설치화 미배선(#15)."
+  elif [ -n "$_form_ln" ] && [ "$_call_ln" -ge "$_form_ln" ]; then
+    BLOCK "Invoke-DashboardInstall 호출(L$_call_ln)이 폼 분기(if(\$OnboardingBlocked) L$_form_ln) 이후/안 — 필수설치화가 일부 경로 전용으로 후퇴(D2/GAP3)."
+  else
+    OK "Invoke-DashboardInstall 호출이 폼 분기보다 앞(모든 경로 공통·#15·위치검증)"
+  fi
+  # ③ D2: 대시보드가 폼 선택(\$Choice.Dashboard)에 다시 갇히면 안 된다.
+  if grep -q '\$Choice\.Dashboard' "$PS1"; then
+    BLOCK "\$Choice.Dashboard 참조 — 대시보드가 다시 폼 체크에 갇힘(D2 위반·필수설치화 후퇴)."
+  else
+    OK "\$Choice.Dashboard 참조 없음 — 대시보드는 폼과 독립(D2)"
+  fi
+  # ④ D2: Invoke-OnboardApply 안에 install-dashboard 호출이 없어야(폼 조건부 설치 블록 제거).
+  if awk '/^function Invoke-OnboardApply/{f=1} f&&/install-dashboard/{print "HIT"} /^}/{if(f)f=0}' "$PS1" | grep -q HIT; then
+    BLOCK "Invoke-OnboardApply 안에 install-dashboard 호출 — 폼 조건부 설치 블록 잔존(D2)."
+  else
+    OK "Invoke-OnboardApply 에 폼 조건부 대시보드 설치 없음(D2)"
+  fi
+  # ⑤ #16: install-viewer.sh 실패 분류 토큰+trap 계약(오프라인 실패 UX 의 단일 지점).
+  #    주석이 아니라 **실제 emit**(printf 'INSTALL_VIEWER_FAIL=...) + trap 을 검사(GAP2). 파일 부재=BLOCK.
+  IV="plugin/dashboard/install-viewer.sh"
+  if [ ! -f "$IV" ]; then
+    BLOCK "install-viewer.sh 부재($IV) — 대시보드 설치·실패 UX 전체 소스 누락(#16)."
+  elif grep -vE '^[[:space:]]*#' "$IV" | grep -q "printf 'INSTALL_VIEWER_FAIL=" \
+       && grep -vE '^[[:space:]]*#' "$IV" | grep -qE 'trap .* EXIT'; then
+    OK "install-viewer 실패 토큰 실제 emit + trap 계약 존재(#16)"
+  else
+    BLOCK "install-viewer.sh 에 INSTALL_VIEWER_FAIL 실제 emit/trap 누락(주석 아님) — 오프라인 실패 UX 회귀(#16)."
+  fi
+else
+  BLOCK "$PS1 가 없습니다(§1g)."
+fi
+# ⑥ #17: Cockpit-Dashboard.cmd 미설치 문구에 opt-in 표현 잔존 금지(필수설치화 반영 강제).
+if [ -f "$DASHF" ]; then
+  if grep -qiE 'opt[ -]?in' "$DASHF"; then
+    BLOCK "Cockpit-Dashboard.cmd 에 'opt in/opt-in' 잔존 — 필수설치화 문구 미반영(#17)."
+  else
+    OK "Cockpit-Dashboard.cmd 에 opt-in 표현 없음(#17)"
+  fi
+fi
+
 # ── 2) 웹 프런트도어: example.invalid 0건 + 발행 플레이스홀더 잔존 + .cmd SHA 실측 대조 ──
 sec "2) 웹 프런트도어(사용자 노출)"
 if [ -f web/index.html ]; then

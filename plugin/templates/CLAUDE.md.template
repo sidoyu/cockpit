@@ -72,7 +72,7 @@
 - **bypass**: WSL 골든 이미지 배포본은 기본 ON(편의), 플러그인-만 설치 환경은 마법사 설정에 따름. **켜진 경우** 파괴/비가역 명령은 **금지목록(deny-list)** 으로 일부 자동 차단되지만(흔한 형태만·완전치 않음), 안전망은 판단을 대신하지 않는다.
 - **메모리 외부송신(egress)** 은 bypass 와 **별개 동의**다 — 기본 OFF(첫 실행 "동의 한 화면"). 끄면 메모리 시스템은 로컬에서 정상 동작한다.
 - **원격조종(Remote Control)**: 이미지 배포본은 기본 ON(`remoteControlAtStartup`). claude.ai Code 탭/모바일에서 이 로컬 세션을 잇는 **공식 기능**으로, **아웃바운드 HTTPS 전용·수신 포트 없음**(VPN/포트 설정 불필요). 끄기: `claude /config` → "Enable Remote Control for all sessions" → false.
-- (선택·기본 OFF) **자체호스팅 대시보드**(읽기전용 뷰어)는 위 원격조종과 별개로, 켤 경우 **localhost + 개인 VPN 대역만** 허용한다. 끄기: `bash <플러그인>/dashboard/disable-remote.sh --apply` · 상태: `cockpit-doctor`. (GOVERNANCE.md 6장)
+- (기본 설치·기본 미기동) **자체호스팅 대시보드**(읽기전용 뷰어)는 기본 부속으로 설치되지만 **설치≠기동** — 자동시작·포트 개방은 없다. 켜는 것은 항상 명시적(바탕화면 아이콘)이며, 위 원격조종과 별개로 켤 경우 **localhost + 개인 VPN 대역만** 허용한다. 끄기: `bash <플러그인>/dashboard/disable-remote.sh --apply` · 상태: `cockpit-doctor`. (GOVERNANCE.md 6장)
 - 긴급정지: `touch ~/.claude/CC_KILL_SWITCH` → 자동 진행 즉시 중단.
 
 ---
