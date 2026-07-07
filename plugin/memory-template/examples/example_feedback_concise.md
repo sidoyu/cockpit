@@ -5,7 +5,7 @@ metadata:
   type: feedback
 ---
 
-> 이것은 **예시 메모리**입니다(type: feedback). feedback·project 메모리는 본문에 **Why / How to apply** 를 함께 적습니다.
+> 이것은 형식을 보여주는 **예시 메모리(참고본)**입니다(type: feedback) — 라이브 메모리에 적재되지 않습니다. feedback·project 메모리는 본문에 **Why / How to apply** 를 함께 적습니다.
 
 (예시) 보고는 결론부터, 군더더기 없이.
 

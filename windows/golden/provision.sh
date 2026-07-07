@@ -712,12 +712,17 @@ PYTRUST
     chmod 0644 "$CLAUDE_DIR/CLAUDE.md"
   fi
 
-  # (f) 메모리 저장소 — 예시 템플릿(비어있을 때만). cc_paths 기본 = ~/.claude/cc-memory.
+  # (f) 메모리 저장소 — 시작 템플릿(빈 인덱스+PROJECT_STATUS·비어있을 때만). cc_paths 기본 = ~/.claude/cc-memory.
+  #     example_* 견본은 memory-template/examples/(비복사)에 있어 라이브로 새지 않는다(#4).
   _memsrc="$STAGE_DIR/memory-template"
   _memdst="$CLAUDE_DIR/cc-memory"
   if [ -d "$_memsrc" ] && { [ ! -d "$_memdst" ] || [ -z "$(ls -A "$_memdst" 2>/dev/null)" ]; }; then
     install -d -m 0755 "$_memdst"
-    for _f in "$_memsrc"/*.md; do [ -e "$_f" ] && cp -a "$_f" "$_memdst/"; done
+    for _f in "$_memsrc"/*.md; do
+      [ -f "$_f" ] || continue   # 정규 파일만(디렉터리·특수파일 제외 — setup.py isfile 가드와 등가)
+      case "$(basename "$_f")" in example_*) continue ;; esac
+      cp -a "$_f" "$_memdst/"
+    done
   fi
 
   # (g) 런타임 상태 디렉터리(빈 채로) — setup_complete 마커는 **굽지 않음**(egress 첫 실행 동의).

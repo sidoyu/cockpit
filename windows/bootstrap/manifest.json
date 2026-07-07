@@ -1,20 +1,20 @@
 {
   "_comment": "릴리스 매니페스트(생성본). golden-build 산출에서 채움. 런타임 신뢰는 '부트스트랩에 박힌 이미지 핀'이고 이 파일은 게시·감사용 단일 출처. 이 빌드는 미서명(체크섬 대조).",
   "schema": "cc-companion/win-release/1",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "distro_name": "cc-cockpit",
   "artifacts": {
     "image": {
       "file": "cockpit-wsl.tar.gz",
-      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.8/cockpit-wsl.tar.gz",
-      "sha256": "b74bf7c09bdc656e52b2df836caac2b3810a8f7661bb1778c451bae8902ed2c4",
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.9/cockpit-wsl.tar.gz",
+      "sha256": "07fdb5fbec8ebd318c33d931901e24a94a55b5ce8c64768acec1bb4c5e465fca",
       "format": "tar.gz",
-      "size_bytes": 437247913
+      "size_bytes": 437254163
     },
     "bootstrap": {
       "file": "Install-Cockpit.ps1",
-      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.8/Install-Cockpit.ps1",
-      "sha256": "906b7cbb2539d76dbd617bfc8e1ccc0fd9f7b628427dcdaba76caa84aa6b15e8",
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.9/Install-Cockpit.ps1",
+      "sha256": "5547808b8385bacba7bfc2adc2e88bb84c3e92bc03b3a868b6719ff92fa02079",
       "authenticode": {
         "signed": false,
         "unsigned_acknowledged": true,
@@ -24,23 +24,23 @@
     },
     "staged_bootstrap": {
       "file": "Install-Cockpit-Staged.ps1",
-      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.8/Install-Cockpit-Staged.ps1",
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.9/Install-Cockpit-Staged.ps1",
       "sha256": "0cb247b51a49d40b20fa24db29bddfc5d81476c4e704ff97e6b3e0d22acc8cf9"
     },
     "dashboard_cmd": {
       "file": "Cockpit-Dashboard.cmd",
-      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.8/Cockpit-Dashboard.cmd",
-      "sha256": "567174419ad280a239f9bbc6fe12d4a39a3f8fddac7702689e61151e476eaab7",
-      "_note": "repo 파일 그대로 자산 업로드(해시=repo 실계산·파일 무변경이라 v0.1.5~7 자산과 동일·URL 태그만 v0.1.8). Install-Cockpit.ps1 §10b 가 이 자산을 핀 해시로 받아 바탕화면 'Cockpit Dashboard' 아이콘을 만든다."
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.9/Cockpit-Dashboard.cmd",
+      "sha256": "052176622c5ff9b6dac766da9658530afdc9134b7f5a7ff321cfab3be99b9b39",
+      "_note": "repo 파일 그대로 자산 업로드(해시=repo 실계산). v0.1.9 에서 Cockpit-Dashboard.cmd 변경(#17: 미설치 시 재시도 안내·opt-in 문구 제거) → 해시 재핀(구 v0.1.5~8 자산과 상이). Install-Cockpit.ps1 §10b 가 이 자산을 핀 해시로 받아 바탕화면 'Cockpit Dashboard' 아이콘을 만든다."
     }
   },
   "provenance": {
     "base_image": "ubuntu:24.04@sha256:52df9b1ee71626e0088f7d400d5c6b5f7bb916f8f0c82b474289a4ece6cf3faf",
-    "private_source_commit": "c0b7459",
-    "public_marketplace_commit": "bf3e1e2f5c2d492a7a93982346bd6d5624bf2f23",
+    "private_source_commit": "69c1ca3",
+    "public_marketplace_commit": "a3d8cb9a30158e88c2575b28d625098f6b8060cd",
     "plugin_preinstall_baked": true,
     "claude_code_pin": "2.1.201",
     "sbom": "cockpit-wsl.sbom.spdx.json",
-    "_note": "v0.1.8 = 온보딩 설치기 이전 릴리스(기억 자동추출 옵션1/2·API 키·세션 기록 대시보드를 첫 실행 마법사에서 설치기 WinForms 폼으로 이전·stdin 키 주입·마법사 축소·publish-gate §1f/smoke §9b 신설). 플러그인 트리 변경 → 공개 C1' 재export(bf3e1e2·v0.1.8 트리)·이미지에 베이크된 installed_plugins 정체성 = 그 C1'. provenance.json·SBOM(SPDX)는 릴리스에 첨부. apt/npm floating으로 완전 bit-for-bit 아님(provenance versions로 실제 설치본 추적). C1' 의 플러그인 트리 == 빌드 소스(private_source_commit) 트리이며, 이 최종 manifest 는 재핀 전 트리인 C1' 에 포함되지 않으므로 자기참조 없음. 트리 안의 manifest.json 은 지시적일 뿐 — 정본 무결성은 릴리스 자산(gh release) 기준."
+    "_note": "v0.1.9 = 대시보드 필수설치화 릴리스(세션 기록 대시보드 뷰어를 설치 시 기본 설치·설치≠기동 유지·오프라인 실패 비치명 완료화면·복원 carry-forward[온보딩 state 보존]·Uninstall 자동백업[배포판 밖 Windows C 드라이브]·뷰어 빈상태 index/ALREADY 자가치유·doctor 승격[뷰어404/state 무결성]·publish-gate §1g/smoke §9c 신설). 플러그인 트리 변경 → 공개 C1' 재export(a3d8cb9·v0.1.9 트리)·이미지에 베이크된 installed_plugins 정체성 = 그 C1'. provenance.json·SBOM(SPDX)는 릴리스에 첨부. apt/npm floating으로 완전 bit-for-bit 아님(provenance versions로 실제 설치본 추적). C1' 의 플러그인 트리 == 빌드 소스(private_source_commit) 트리이며, 이 최종 manifest 는 재핀 전 트리인 C1' 에 포함되지 않으므로 자기참조 없음. 트리 안의 manifest.json 은 지시적일 뿐 — 정본 무결성은 릴리스 자산(gh release) 기준."
   }
 }

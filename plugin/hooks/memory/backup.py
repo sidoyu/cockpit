@@ -25,7 +25,7 @@
   python3 backup.py --dry-run  # 무엇을 백업/회전할지 보고만(생성 안 함)
   python3 backup.py --list     # 기존 백업 나열
 """
-import os, sys, re, glob, argparse, datetime, tarfile, tempfile
+import os, sys, re, glob, argparse, datetime, tarfile, tempfile, base64
 try:
     import fcntl   # POSIX(WSL·mac) — 동시 실행 직렬화용. 없으면 락 없이 진행(단일 실행 전제).
 except ImportError:
@@ -158,7 +158,30 @@ def _backups_in(d):
     return sorted(glob.glob(os.path.join(d, PREFIX + "*.tar.gz")))
 
 
-def do_scan():
+def do_scan(porcelain=False):
+    # 사람용(기본) vs 기계용(--porcelain). porcelain 은 설치기 폼(#3)이 파싱한다:
+    #   CBK_SCAN|1                                   ← 버전 헤더
+    #   CBK|<개수>|<epoch>|<YYYY-MM-DD>|<b64경로>      ← 백업 있는 디렉터리마다 1줄
+    #   CBK_END|<디렉터리수>                            ← 종료(0 이면 발견 없음)
+    # 구분자 '|' 는 base64 알파벳(A-Za-z0-9+/=)·숫자·날짜에 없어 안전. 경로는 base64(utf-8)로
+    # 인코딩 — 공백·유니코드·드라이브문자 경로도 wsl.exe 출력·인자 왕복에서 깨지지 않는다.
+    if porcelain:
+        rows = []
+        for d in _scan_candidate_dirs():
+            bks = _backups_in(d)
+            if not bks:
+                continue
+            latest = bks[-1]
+            epoch = int(os.path.getmtime(latest))
+            date = datetime.datetime.fromtimestamp(epoch).strftime("%Y-%m-%d")
+            b64 = base64.b64encode(d.encode("utf-8")).decode("ascii")
+            rows.append((epoch, len(bks), date, b64))
+        print("CBK_SCAN|1")
+        for epoch, cnt, date, b64 in rows:
+            print("CBK|%d|%d|%s|%s" % (cnt, epoch, date, b64))
+        print("CBK_END|%d" % len(rows))
+        return 0 if rows else 1
+
     found_any = False
     print("=== 백업 위치 스캔 ===")
     for d in _scan_candidate_dirs():
@@ -452,6 +475,8 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="보고만(생성/삭제 안 함)")
     ap.add_argument("--list", action="store_true", help="기존 백업 나열")
     ap.add_argument("--scan", action="store_true", help="백업 위치 후보 탐색(복원용)")
+    ap.add_argument("--porcelain", action="store_true",
+                    help="--scan 을 기계 파싱용 출력으로(설치기 폼 #3)")
     ap.add_argument("--restore", action="store_true", help="백업에서 복원(기본 dry-run)")
     ap.add_argument("--apply", action="store_true", help="--restore 를 실제 실행")
     ap.add_argument("--file", help="복원할 백업 파일 직접 지정")
@@ -460,7 +485,7 @@ def main():
                     help="settings.json 도 복원(기본 제외 — 새 이미지 베이크 설정 보존)")
     args = ap.parse_args()
     if args.scan:
-        return do_scan()
+        return do_scan(porcelain=args.porcelain)
     if args.restore:
         return do_restore(args)
     if args.list:

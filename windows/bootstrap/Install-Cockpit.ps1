@@ -57,11 +57,11 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ── 게시 시 치환되는 핀 고정값(빌드/릴리스 파이프라인이 채움) ──────────────
-$PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.8/cockpit-wsl.tar.gz'
-$PinnedSha256   = 'b74bf7c09bdc656e52b2df836caac2b3810a8f7661bb1778c451bae8902ed2c4'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
+$PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.9/cockpit-wsl.tar.gz'
+$PinnedSha256   = '07fdb5fbec8ebd318c33d931901e24a94a55b5ce8c64768acec1bb4c5e465fca'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
 $MarketplaceUrl = 'https://github.com/sidoyu/cockpit'                                  # /plugin marketplace add 실주소(게시자 sidoyu·cc-companion).
-$PinnedDashboardCmdUrl    = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.8/Cockpit-Dashboard.cmd'
-$PinnedDashboardCmdSha256 = '567174419ad280a239f9bbc6fe12d4a39a3f8fddac7702689e61151e476eaab7'   # Cockpit-Dashboard.cmd SHA-256 (repo 파일 그대로 자산 업로드 — publish-gate §1d 가 재핀 강제).
+$PinnedDashboardCmdUrl    = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.9/Cockpit-Dashboard.cmd'
+$PinnedDashboardCmdSha256 = '052176622c5ff9b6dac766da9658530afdc9134b7f5a7ff321cfab3be99b9b39'   # Cockpit-Dashboard.cmd SHA-256 (repo 파일 그대로 자산 업로드 — publish-gate §1d 가 재핀 강제).
 $PLACEHOLDER_HOSTS = @('example.invalid')
 
 function Info($m){ Write-Host "[cockpit] $m" }
@@ -240,12 +240,20 @@ function Show-OnboardingForm {
   # 반환: $null = 건너뛰기/창닫기(아무것도 적용·기록하지 않음) / 해시테이블 = 동의 체크 후 [적용].
   # 고지 문구는 마법사 SKILL §0/§3.5/§3.7 베이크분과 동일 수준 유지(동의 질) — bypass 사전적용과
   # 옵션 1 외부송신은 별줄로 분리 표기.
+  # $BackupScan(해시테이블 @{Count;Date;Dir;WinPath;OtherUser} 또는 $null): 이 PC 에서 이전 백업이
+  #   발견됐을 때만 #3 복원 GroupBox 를 노출한다(없으면 폼은 v0.1.9 와 픽셀 동일 — 공통 경로 무영향).
+  param([hashtable]$BackupScan)
+  $hasBackup = [bool]$BackupScan
+  $rDelta = 0; if ($hasBackup) { $rDelta = 114 }  # 복원 박스(경로+설명, 타프로필 경고 포함 3줄) 높이만큼 하단 밀어냄
+  $iDelta = 132   # #2 CLAUDE.md 3값 개인화 GroupBox(항상 표시·정적 높이). 설계 §5.3 '접이식'은 런타임
+                  #   리사이즈가 필요하나 로컬 pwsh 육안검증 불가 → 정적 컴팩트로 대체(리사이즈 버그 회피).
+  $restoreChk = $null; $restoreBox = $null        # StrictMode: 미발견 경로에서도 초기화 보장
   $form = New-Object System.Windows.Forms.Form
   $form.Text = 'cockpit 추가 설정'
   $form.FormBorderStyle = 'FixedDialog'
   $form.MaximizeBox = $false; $form.MinimizeBox = $false
   $form.StartPosition = 'CenterScreen'
-  $form.ClientSize = New-Object System.Drawing.Size(600, 545)
+  $form.ClientSize = New-Object System.Drawing.Size(600, (545 + $rDelta + $iDelta))
   $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
   $form.TopMost = $true   # 콘솔 뒤에 숨어 '설치가 멈췄다'로 오인되는 것 방지
 
@@ -335,23 +343,99 @@ function Show-OnboardingForm {
   $memBox.Controls.Add($optNoKeyNote)
   $form.Controls.Add($memBox)
 
+  # ②-b 이전 백업 복원(#3 — 이 PC 에서 백업을 발견했을 때만 노출·기본 언체크·거버넌스 동의로 활성).
+  #   복원은 사용자 본인의 옛 기억을 되살릴 뿐 외부송신 아님. 이번 설치의 동의·키는 그대로 유지된다
+  #   (§9.5 에서 복원→온보딩 apply 순서 = 새 값이 복원값 위에 얹힘·§5.4 #8 carry-forward).
+  if ($hasBackup) {
+    $restoreBox = New-Object System.Windows.Forms.GroupBox
+    $restoreBox.Text = '이전 백업 복원 (선택)'
+    $restoreBox.Location = New-Object System.Drawing.Point(12, 452)
+    $restoreBox.Size = New-Object System.Drawing.Size(576, 102)
+    $restoreBox.Enabled = $false
+    # 발견 위치(Windows 경로)를 명시 노출 — 어느 백업을 되살리는지 사용자가 확인(Codex 발견1).
+    # 레이아웃은 정적(3줄분): 타프로필 경고가 붙어도 오버플로 안 되게 항상 같은 높이.
+    $restoreNote = New-Object System.Windows.Forms.Label
+    $restoreNote.Text = ("발견: {0}  (최근 {1} · {2}건)`n복원하면 그때의 기억·CLAUDE.md 를 되살립니다. 이번 설치에서 고른 외부송신 동의·API 키 설정은 그대로 유지됩니다." -f $BackupScan['WinPath'], $BackupScan['Date'], $BackupScan['Count'])
+    $restoreNote.Location = New-Object System.Drawing.Point(10, 16)
+    $restoreNote.Size = New-Object System.Drawing.Size(556, 54)
+    if ($BackupScan['OtherUser']) {
+      # 현재 Windows 사용자 폴더의 백업이 아님 — 공유 PC/타 프로필 오복원 방지 경고(붉게).
+      $restoreNote.ForeColor = [System.Drawing.Color]::Firebrick
+      $restoreNote.Text = "⚠ 이 백업은 현재 Windows 사용자 폴더의 것이 아닙니다 — 본인 백업이 맞는지 위 경로를 확인하세요.`n" + $restoreNote.Text
+    }
+    $restoreBox.Controls.Add($restoreNote)
+    $restoreChk = New-Object System.Windows.Forms.CheckBox
+    $restoreChk.Text = '발견한 백업에서 기억 복원하기 (권장 — 기존 사용자 재설치 시)'
+    $restoreChk.Location = New-Object System.Drawing.Point(10, 72)
+    $restoreChk.Size = New-Object System.Drawing.Size(556, 22)
+    $restoreBox.Controls.Add($restoreChk)
+    $form.Controls.Add($restoreBox)
+  }
+
+  # ②-c CLAUDE.md 개인화 3값(#2 — 선택·비우면 스킵→마법사). 거버넌스 동의로 활성(다른 박스와 동일).
+  #   베이크된 ~/.claude/CLAUDE.md 의 {{USER_ROLE}}·{{DEVICE_TOPOLOGY}}·{{PATH_ALIASES}} 만 치환한다
+  #   (setup.py set-claude-identity·§5.3). 이 3칸은 개인정보·시크릿 금지(템플릿 L5) — note 가 1차,
+  #   setup.py 가 키·IP·이메일·{{토큰}}·여러줄·과길이를 방어적 2차로 거른다(완벽 PII 탐지는 아님).
+  #   값은 argv 로 전달(키가 아님·실추출키는 stdin 전용 별도 경로).
+  $idBox = New-Object System.Windows.Forms.GroupBox
+  $idBox.Text = 'CLAUDE.md 개인화 (선택)'
+  $idBox.Location = New-Object System.Drawing.Point(12, (452 + $rDelta))
+  $idBox.Size = New-Object System.Drawing.Size(576, 124)
+  $idBox.Enabled = $false
+  $idNote = New-Object System.Windows.Forms.Label
+  $idNote.Text = '매 세션 로드되는 CLAUDE.md 에 넣을 값(한 줄로). 비우면 건너뜀 — 나중에 /cockpit-setup. 개인정보·시크릿·IP·계정 금지.'
+  $idNote.Location = New-Object System.Drawing.Point(10, 18)
+  $idNote.Size = New-Object System.Drawing.Size(556, 18)
+  $idBox.Controls.Add($idNote)
+  $roleLabel = New-Object System.Windows.Forms.Label
+  $roleLabel.Text = '역할:'
+  $roleLabel.Location = New-Object System.Drawing.Point(10, 44)
+  $roleLabel.Size = New-Object System.Drawing.Size(110, 20)
+  $idBox.Controls.Add($roleLabel)
+  $roleBox = New-Object System.Windows.Forms.TextBox
+  $roleBox.Location = New-Object System.Drawing.Point(124, 41)
+  $roleBox.Size = New-Object System.Drawing.Size(442, 24)
+  $roleBox.MaxLength = 120
+  $idBox.Controls.Add($roleBox)
+  $topoLabel = New-Object System.Windows.Forms.Label
+  $topoLabel.Text = '기기·토폴로지:'
+  $topoLabel.Location = New-Object System.Drawing.Point(10, 72)
+  $topoLabel.Size = New-Object System.Drawing.Size(110, 20)
+  $idBox.Controls.Add($topoLabel)
+  $topoBox = New-Object System.Windows.Forms.TextBox
+  $topoBox.Location = New-Object System.Drawing.Point(124, 69)
+  $topoBox.Size = New-Object System.Drawing.Size(442, 24)
+  $topoBox.MaxLength = 120
+  $idBox.Controls.Add($topoBox)
+  $aliasLabel = New-Object System.Windows.Forms.Label
+  $aliasLabel.Text = '경로 약칭:'
+  $aliasLabel.Location = New-Object System.Drawing.Point(10, 100)
+  $aliasLabel.Size = New-Object System.Drawing.Size(110, 20)
+  $idBox.Controls.Add($aliasLabel)
+  $aliasBox = New-Object System.Windows.Forms.TextBox
+  $aliasBox.Location = New-Object System.Drawing.Point(124, 97)
+  $aliasBox.Size = New-Object System.Drawing.Size(442, 24)
+  $aliasBox.MaxLength = 120
+  $idBox.Controls.Add($aliasBox)
+  $form.Controls.Add($idBox)
+
   # ③ 세션 대시보드 안내(선택 아님 — 필수설치화·§9.4. 폼 옵트인 제거·설치≠기동 명시만).
   $dashInfo = New-Object System.Windows.Forms.Label
   $dashInfo.Text = "세션 열람 대시보드는 기본 부속으로 자동 설치됩니다(설치≠기동 — 자동시작·포트 개방 없음, " +
                    "켜기 = 바탕화면 'Cockpit Dashboard' 아이콘·창 닫으면 꺼짐). 공유 PC·화면공유 중이면 켜지 마세요."
-  $dashInfo.Location = New-Object System.Drawing.Point(12, 452)
+  $dashInfo.Location = New-Object System.Drawing.Point(12, (452 + $rDelta + $iDelta))
   $dashInfo.Size = New-Object System.Drawing.Size(576, 40)
   $form.Controls.Add($dashInfo)
 
   $btnApply = New-Object System.Windows.Forms.Button
   $btnApply.Text = '적용하고 계속'
-  $btnApply.Location = New-Object System.Drawing.Point(160, 500)
+  $btnApply.Location = New-Object System.Drawing.Point(160, (500 + $rDelta + $iDelta))
   $btnApply.Size = New-Object System.Drawing.Size(180, 32)
   $btnApply.Enabled = $false
   $form.Controls.Add($btnApply)
   $btnSkip = New-Object System.Windows.Forms.Button
   $btnSkip.Text = '건너뛰기 (나중에 /cockpit-setup)'
-  $btnSkip.Location = New-Object System.Drawing.Point(356, 500)
+  $btnSkip.Location = New-Object System.Drawing.Point(356, (500 + $rDelta + $iDelta))
   $btnSkip.Size = New-Object System.Drawing.Size(220, 32)
   $form.Controls.Add($btnSkip)
   $form.CancelButton = $btnSkip
@@ -359,6 +443,8 @@ function Show-OnboardingForm {
   $govChk.add_CheckedChanged({
     $memBox.Enabled = $govChk.Checked
     $btnApply.Enabled = $govChk.Checked
+    if ($restoreBox) { $restoreBox.Enabled = $govChk.Checked }
+    $idBox.Enabled = $govChk.Checked
   })
   $optKey.add_CheckedChanged({
     $keyBox.Enabled = $optKey.Checked
@@ -381,8 +467,12 @@ function Show-OnboardingForm {
   $result = $null
   if ($dr -eq [System.Windows.Forms.DialogResult]::OK) {
     # 대시보드는 폼 선택 대상 아님(§9.4 필수설치) — 결과에 Dashboard 키 없음(D3·apply 는 §9.4 실측값 사용).
-    $result = @{ Egress = $optKey.Checked; Key = $null }
+    # Restore/RestoreDir·Claude* 키는 항상 포함(StrictMode — 호출부가 무조건 참조 가능).
+    # Claude* 3값은 폼에서 비어있으면 빈 문자열 — 호출부(§9.5)가 3값 다 비면 set-claude-identity 를 호출조차 안 한다.
+    $result = @{ Egress = $optKey.Checked; Key = $null; Restore = $false; RestoreDir = $null;
+                 ClaudeRole = $roleBox.Text.Trim(); ClaudeTopology = $topoBox.Text.Trim(); ClaudeAliases = $aliasBox.Text.Trim() }
     if ($optKey.Checked) { $result.Key = $keyBox.Text.Trim() }
+    if ($hasBackup -and $restoreChk.Checked) { $result.Restore = $true; $result.RestoreDir = $BackupScan['Dir'] }
   }
   $keyBox.Text = ''   # best-effort 소거(컨트롤 잔존 제거 — .NET string 불변성 한계는 인지)
   $form.Dispose()
@@ -437,6 +527,91 @@ function Invoke-OnboardApply {
     Warn "egress 마커 기록만 실패 — 자동추출은 꺼진 상태(안전). 첫 실행 /cockpit-setup 이 해당 단계만 재안내합니다."
   } elseif ($LASTEXITCODE -ne 0) {
     Warn "온보딩 상태 기록 실패(코드 $LASTEXITCODE) — 첫 실행 /cockpit-setup 이 전체 질문으로 진행합니다(안전)."
+  }
+}
+
+function Get-BackupScan {
+  # #3 — 이 PC 의 C:\ 관례 위치에서 이전 cockpit 백업을 탐지(읽기 전용·비파괴). backup.py --scan
+  # --porcelain 이 ASCII 기계 출력을 내면 파싱한다. best-effort: 실패·무발견이면 $null(설치 비차단).
+  #   porcelain 형식: CBK|<개수>|<epoch>|<YYYY-MM-DD>|<b64경로>  (구분자 '|' 는 base64/숫자/날짜에 없음)
+  # 경로는 base64 라 공백·유니코드·드라이브문자도 무손상 왕복 → --restore --dir 로 그대로 되넘긴다.
+  # ★ 후보 선택(Codex 발견1 — 공유 PC 안전): 스캔은 /mnt/*/Users/*/cockpit-backups 전 프로필을
+  #   훑으므로 '최신 1개 자동선택'은 남의 백업을 복원할 위험이 있다. → **현재 Windows 사용자
+  #   프로필 폴더의 백업을 우선** 고르고, 그게 없을 때만 최신 폴백 + OtherUser 플래그(폼이 경고+경로 노출).
+  # 반환: @{ Count; Date; Dir; WinPath; OtherUser } | $null.
+  # ⚠ hashtable 값 접근은 반드시 bracket(['키']) — dot .Count 는 키가 아니라 항목수를 돌려줌(발견2).
+  param([string]$DistroName)
+  $out = $null
+  try { $out = & wsl.exe -d $DistroName -- /usr/local/bin/cockpit-onboard backup --scan --porcelain 2>&1 }
+  catch { return $null }
+  if (-not $out) { return $null }
+  $rows = @()
+  foreach ($line in @($out)) {
+    if ([string]$line -match '^\s*CBK\|(\d+)\|(\d+)\|(\d{4}-\d{2}-\d{2})\|([A-Za-z0-9+/=]+)\s*$') {
+      $dir = $null
+      try { $dir = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Matches[4])) } catch { continue }
+      if (-not $dir) { continue }
+      $rows += , @{ Count = [int]$Matches[1]; Epoch = [long]$Matches[2]; Date = $Matches[3]; Dir = $dir }
+    }
+  }
+  if ($rows.Count -eq 0) { return $null }
+  # 현재 Windows 사용자 프로필 폴더명(best-effort). WSL 백업 경로 …/Users/<폴더>/… 와 대조.
+  $curUser = $null
+  try { $curUser = Split-Path $env:USERPROFILE -Leaf } catch {}
+  $pick = $null
+  if ($curUser) {
+    $needle = [regex]::Escape('/Users/' + $curUser + '/')
+    foreach ($r in $rows) {
+      if ($r['Dir'] -match $needle -and (-not $pick -or $r['Epoch'] -gt $pick['Epoch'])) { $pick = $r }
+    }
+  }
+  $otherUser = $false
+  if (-not $pick) {
+    foreach ($r in $rows) { if (-not $pick -or $r['Epoch'] -gt $pick['Epoch']) { $pick = $r } }
+    if ($curUser) { $otherUser = $true }   # 현재 사용자 백업이 아님 → 폼이 경고 표시
+  }
+  # /mnt/c/Users/X/cockpit-backups → C:\Users\X\cockpit-backups (표시 전용·복원엔 원 Dir 사용)
+  $win = $pick['Dir']
+  if ($pick['Dir'] -match '^/mnt/([a-zA-Z])/(.*)$') { $win = $Matches[1].ToUpper() + ':\' + ($Matches[2] -replace '/', '\') }
+  return @{ Count = $pick['Count']; Date = $pick['Date']; Dir = $pick['Dir']; WinPath = $win; OtherUser = $otherUser }
+}
+
+function Invoke-OnboardRestore {
+  # #3 — 폼에서 '복원' 선택 시: 발견한 백업에서 기억·상태 복원(WSL 브리지 재사용). best-effort·비치명.
+  # ★ 호출 순서(§9.5): 복원 → 그다음 온보딩 apply(키·egress 마커). 복원이 STATE_DIR/MEMORY_DIR 를
+  #   move-aside 후 옛 내용으로 교체하므로, 새로 넣을 API 키·동의를 복원 뒤에 얹어야 소실되지 않는다
+  #   (§5.5 #12 '복원 직후 키 소실' 케이스 회피). backup.py 의 #8 carry-forward 는 상태 2파일을 지킨다.
+  param([string]$DistroName, [string]$Dir)
+  Info "이전 백업에서 기억 복원 중($Dir)…"
+  $rc = -1
+  try {
+    & wsl.exe -d $DistroName -- /usr/local/bin/cockpit-onboard backup --restore --apply --dir $Dir 2>&1 | Out-Null
+    $rc = $LASTEXITCODE
+  } catch { $rc = -1 }
+  if ($rc -eq 0) {
+    Info '기억 복원 완료 — 복원된 내용은 다음 세션부터 반영됩니다(점검: /cockpit-setup 또는 doctor).'
+  } else {
+    Warn "기억 복원 실패(코드 $rc) — 설치는 정상. 나중에 /cockpit-setup 또는 'cockpit-onboard backup --restore --apply' 로 재시도하세요."
+  }
+}
+
+function Invoke-OnboardClaudeIdentity {
+  # #2 — 폼의 CLAUDE.md 3값을 베이크된 ~/.claude/CLAUDE.md 의 3 플레이스홀더에 치환(narrow 진입점).
+  # 빈 값은 인자 자체를 안 넘긴다(setup.py 기본 ""=스킵). 3값 다 비면 호출조차 안 함(§9.5 가드).
+  # ★ 순서(§9.5): 복원 뒤 → 이 호출 → apply. 복원이 CLAUDE.md 를 옛 것으로 교체하면 그 위에 남은
+  #   플레이스홀더만 새 값으로 채운다(이미 채워진 값은 setup.py 가 덮지 않음). best-effort·비치명.
+  # 값은 키가 아니라 개인화 문구 → argv 전달(경로 --dir 와 동형). 시크릿/개인정보는 setup.py 가 거른다.
+  param([string]$DistroName, [string]$Role, [string]$Topology, [string]$Aliases)
+  if (-not ($Role -or $Topology -or $Aliases)) { return }
+  $idArgs = @('-d', $DistroName, '--', '/usr/local/bin/cockpit-onboard', 'setup', 'set-claude-identity')
+  if ($Role)     { $idArgs += @('--role', $Role) }
+  if ($Topology) { $idArgs += @('--topology', $Topology) }
+  if ($Aliases)  { $idArgs += @('--aliases', $Aliases) }
+  & wsl.exe @idArgs
+  if ($LASTEXITCODE -ne 0) {
+    Warn "CLAUDE.md 개인화 반영 실패(코드 $LASTEXITCODE) — 설치는 정상. 첫 실행 /cockpit-setup 에서 채우세요."
+  } else {
+    Info 'CLAUDE.md 개인화 값 반영 완료(입력한 항목만·빈 칸은 마법사에서 채움).'
   }
 }
 
@@ -501,14 +676,34 @@ $DashboardResult = @{ Status = 'failed'; Class = 'unknown'; Code = -1 }
 try { $DashboardResult = Invoke-DashboardInstall -DistroName $DistroName -OnboardingBlocked $OnboardingBlocked }
 catch { Warn "대시보드 설치 처리 오류(설치는 정상): $($_.Exception.Message) — 첫 실행 /cockpit-setup 에서 재시도." }
 
+# ── 9.4b) 이전 백업 스캔(#3) — 모든 경로 공통(읽기 전용·비파괴). 복원 실행은 대화형 동의 시에만(§9.5) ──
+# 재설치 사용자면 #9 Uninstall 이 C:\ 관례 위치에 자동백업을 남겼을 수 있다. 발견 시 온보딩 폼이
+# 복원 체크박스를 노출한다(무발견=폼 무변화). 무인/비대화는 동의 화면이 없어 복원하지 않는다(안전).
+$BackupScan = $null
+try { $BackupScan = Get-BackupScan -DistroName $DistroName }
+catch { $BackupScan = $null }
+if ($BackupScan) { Info "이전 cockpit 백업 발견($($BackupScan['Date']) · $($BackupScan['Count'])건 · $($BackupScan['WinPath'])) — 온보딩 화면에서 복원 여부를 고를 수 있습니다." }
+
 # ── 9.5) 온보딩 폼(v0.1.8 흐름 유지·대시보드 GroupBox 제거) — $OnboardingBlocked 로 분기 ──
 if ($OnboardingBlocked) {
   Info "온보딩 화면 생략($OnboardingBlocked) — 안전 기본값(자동추출 OFF). 대시보드는 위에서 이미 시도됨. 첫 실행 /cockpit-setup 에서 동일 설정 가능."
+  if ($BackupScan) { Info "이전 백업($($BackupScan['Date']) · $($BackupScan['WinPath']))은 자동 복원하지 않습니다(무인·동의 없음) — 첫 실행 /cockpit-setup 또는 'cockpit-onboard backup --restore --apply' 로 복원하세요." }
 } else {
   Info '온보딩 화면 표시(선택 옵션·API 키) — 창에서 선택을 마치면 설치가 이어집니다.'
   try {
-    $OnboardingChoice = Show-OnboardingForm
-    if ($OnboardingChoice) { Invoke-OnboardApply -DistroName $DistroName -Choice $OnboardingChoice -DashboardStatus $DashboardResult.Status }
+    $OnboardingChoice = Show-OnboardingForm -BackupScan $BackupScan
+    if ($OnboardingChoice) {
+      # ★ 순서: 복원 먼저 → 그다음 apply(키·egress). 복원이 옛 기억으로 교체한 위에 이번 설치의
+      #   새 동의·키를 얹어야 소실되지 않는다(§5.5 #12·Invoke-OnboardRestore 주석).
+      if ($OnboardingChoice.Restore) {
+        try { Invoke-OnboardRestore -DistroName $DistroName -Dir $OnboardingChoice.RestoreDir }
+        catch { Warn "복원 처리 오류(설치는 정상): $($_.Exception.Message) — 첫 실행 /cockpit-setup 에서 재시도하세요." }
+      }
+      # #2 — CLAUDE.md 3값 개인화: 복원 뒤(남은 플레이스홀더에 새 값)·apply 전. best-effort·비치명.
+      try { Invoke-OnboardClaudeIdentity -DistroName $DistroName -Role $OnboardingChoice.ClaudeRole -Topology $OnboardingChoice.ClaudeTopology -Aliases $OnboardingChoice.ClaudeAliases }
+      catch { Warn "CLAUDE.md 개인화 처리 오류(설치는 정상): $($_.Exception.Message) — 첫 실행 /cockpit-setup 에서 채우세요." }
+      Invoke-OnboardApply -DistroName $DistroName -Choice $OnboardingChoice -DashboardStatus $DashboardResult.Status
+    }
     else { Info '온보딩 건너뜀 — 첫 실행 /cockpit-setup 에서 같은 설정을 안내합니다.' }
     $OnboardingChoice = $null   # best-effort 소거(키 원문 참조 해제)
   } catch {

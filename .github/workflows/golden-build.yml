@@ -41,6 +41,13 @@ on:
   # 태그 push 트리거 없음: 골든 빌드는 입력(claude_code_version·marketplace_url 등)이 필요한
   # 의도적 수동 작업이다. 태그 자동발화는 빈 입력·재빌드 핀불일치를 유발하므로 workflow_dispatch 전용.
 
+# 동시 골든빌드 직렬화(Codex 4f): 두 run 이 겹치면 각자 기존 아티팩트만 지우고 새로 올려 다시 2개(쿼터
+# 재초과)가 되거나, 새 run 의 아티팩트 정리가 이전 run 의 publish-gate download 전에 그 아티팩트를 지울 수
+# 있다. cancel-in-progress:false = 이전 run 을 끝까지(publish-gate 포함) 돌린 뒤 다음 run 시작(대기·비취소).
+concurrency:
+  group: golden-build-${{ github.repository }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -48,7 +55,29 @@ jobs:
   build:
     name: 골든 이미지 빌드 + SBOM + 스모크
     runs-on: ubuntu-latest
+    permissions:
+      contents: read    # checkout·git log(SOURCE_DATE_EPOCH·plugin_commit 산출)
+      actions: write    # 이전 동일이름 아티팩트 삭제(스토리지 쿼터 — 동시 1개 제한). 이 잡에만 스코프.
     steps:
+      - name: 이전 골든이미지 아티팩트 정리(동시 1개 제한 — 무료 스토리지 쿼터 0.5GB < 이미지 2개)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 골든 이미지(~418MB)가 무료 Actions 스토리지 쿼터(0.5GB)에 육박 → 2개만 공존해도 초과.
+          # retention-days(3)만으론 3일 창 안에 여러 빌드가 겹쳐 초과(실측: 4개 1.6GB 누적·쿼터 100% 초과).
+          # 새 빌드 시작 시 기존 cockpit-golden-image 를 지워 '동시 최대 1개'로 캡한다. 현재 run 산출물은
+          # 이 스텝 뒤 업로드되므로 미영향(승격 창=런북 §2 post-run download 는 retention 이 보존).
+          # ⚠ trade-off(Codex 4f finding3): 이전 run 의 '미승격' 산출물도 여기서 지워진다(500MB 로 2개 공존
+          #   불가) → 새 golden-build 실행 전 기존 후보를 반드시 승격 또는 폐기할 것(RELEASE 런북 §2 명시).
+          # fail-fast(Codex 4f finding2): quota 방어가 목적이므로 목록/삭제 실패면 즉시 중단한다 — 긴 빌드
+          #   뒤 업로드에서 quota 로 실패하는 낭비를 피하고 '동시 1개'를 시도가 아닌 실제 보장으로 만든다.
+          set -euo pipefail
+          ids="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" --paginate \
+                  --jq '.artifacts[] | select(.name=="cockpit-golden-image" and .expired==false) | .id')"
+          for id in $ids; do
+            echo "deleting old artifact $id"
+            gh api -X DELETE "/repos/${GITHUB_REPOSITORY}/actions/artifacts/$id"
+          done
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with: { fetch-depth: 0 }   # plugin_commit·SOURCE_DATE_EPOCH 산출용 전체 이력
 
@@ -123,8 +152,9 @@ jobs:
           if-no-files-found: error
           # 보존 3일: 이 아티팩트는 ①같은 실행 내 publish-gate 의 핀-해시 교차검증과
           # ②run 종료 후 릴리스 승격(RELEASE runbook §2: 아티팩트 download→핀 치환→cockpit 릴리스 자산 업로드)에 쓰인다.
-          # 기본 90일 보존이면 수동 골든빌드마다 ~400MB 가 3개월 적재 → Actions 스토리지 쿼터(0.5GB) 초과(누적 4.3GB 관측).
-          # 사후 수동 download 창을 남기되 장기 적재는 끊는 절충값이 3일(승격을 워크플로 내 자동화하면 1일/즉시삭제로 더 조일 수 있음).
+          # 3일 = 사후 수동 download(승격) 창. 단 무료 쿼터(0.5GB) < 이미지 1개 여유라 3일 창 안에 빌드가
+          # 겹치면 초과 → 동시개수 캡은 위 '이전 아티팩트 정리' 스텝(빌드 시작 시 기존분 삭제=동시 1개)이 담당.
+          # 즉 retention=적재 상한(시간)·정리 스텝=동시 상한(개수)의 이중 방어. (정석 해법 = Release 자산 발행은 후속 후보.)
           retention-days: 3
 
   windows-smoke:

@@ -36,7 +36,7 @@ cockpit/                           # = 마켓플레이스 루트(공개 repo: gi
 │   ├── skills/setup-wizard/SKILL.md  # 첫 실행 마법사
 │   ├── safety/                       # deny-list · 긴급정지 · 감사로그
 │   ├── templates/CLAUDE.md.template  # 살균된 행동 규율(플레이스홀더)
-│   └── memory-template/              # 빈 스키마 + 예시 메모리
+│   └── memory-template/              # 시작 템플릿(빈 인덱스+PROJECT_STATUS) · examples/=참고 견본(비복사)
 ├── scripts/secret-scan.sh            # 발행 전 시크릿 스캔
 └── docs/
 ```

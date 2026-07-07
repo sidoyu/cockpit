@@ -14,6 +14,10 @@
                              [--key-registered {yes,no}] [--dashboard {installed,skipped,failed}]
                             Windows 설치기 온보딩 폼의 결정값 적용(v0.1.8·narrow 진입점).
                             install 의 다른 책임(CLAUDE.md·settings·메모리 템플릿)은 일절 미접촉.
+  set-claude-identity [--role ..] [--topology ..] [--aliases ..]
+                            베이크된 ~/.claude/CLAUDE.md 의 3 플레이스홀더
+                            ({{USER_ROLE}}·{{DEVICE_TOPOLOGY}}·{{PATH_ALIASES}})만 폼 값으로 치환(v0.1.10·#2).
+                            빈 값은 스킵(플레이스홀더 유지→마법사). 시크릿/개인정보 금지(방어 필터).
   rollback [--latest|--list]  마지막(또는 지정) 백업으로 복원.
 
 설계: 기존 사용자 데이터를 **덮어쓰지 않는다**(비어있을 때만 채움). settings.json 은
@@ -23,7 +27,7 @@
   동의(--i-accept-governance) 만으로는 둘 중 어느 것도 켜지지 않는다(각 기능 플래그가 별도 필수).
 경로 규약은 cc_paths(단일 출처) 재사용.
 """
-import sys, os, json, shutil, time, argparse, subprocess
+import sys, os, json, shutil, time, argparse, subprocess, re
 
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 TEMPLATES = os.path.join(PLUGIN_ROOT, "templates")
@@ -276,7 +280,7 @@ def doctor():
             _p(OK if rc == 0 else WARN, "MEMORY.md 인덱스 일관성: %s" %
                ("일치" if rc == 0 else "드리프트(편집 후 자동 재생성 대기 가능)"))
     else:
-        _p(INFO, "메모리 저장소 비어있음/없음 — 설치 시 예시 템플릿으로 채움")
+        _p(INFO, "메모리 저장소 비어있음/없음 — 설치 시 시작 템플릿(빈 인덱스+PROJECT_STATUS)으로 채움")
 
     # CLAUDE.md 충돌
     if os.path.exists(CLAUDE_MD):
@@ -723,6 +727,106 @@ def apply_installer_onboarding(memory_egress, key_registered, dashboard, governa
     return 0
 
 
+# 베이크된 CLAUDE.md 의 3 개인화 플레이스홀더(provision 은 {{PRIMARY_LANGUAGE}} 만 이미 치환·L711).
+#   토큰 → (폼 인자 키, 사람용 라벨). PRIMARY_LANGUAGE 는 대상 아님(기본 한국어).
+CLAUDE_IDENTITY_FIELDS = (
+    ("{{USER_ROLE}}", "role", "역할"),
+    ("{{DEVICE_TOPOLOGY}}", "topology", "기기·토폴로지"),
+    ("{{PATH_ALIASES}}", "aliases", "경로 약칭"),
+)
+
+
+_IPV4_RE = re.compile(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b")
+_EMAIL_RE = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
+
+
+def _identity_value_ok(v):
+    """이 3칸은 개인정보·시크릿 금지(템플릿 L5 규율). 폼 note 가 1차 안내, 여기는 흔한 오입력
+    (키·비번·IP·이메일·플레이스홀더 토큰·여러 줄·과길이)을 거르는 **방어적 2차** — 모든 PII 를
+    잡는 완벽 탐지가 아니다(계정명·사내명 등은 note 가 최종 책임). 반환: (통과여부, 사유).
+    - {{...}} 토큰 거부: 순차 치환의 교차 오염 방지(입력에 다른 플레이스홀더가 섞이는 케이스·Codex)."""
+    if "\n" in v or "\r" in v or any(ord(c) < 32 for c in v):
+        return (False, "줄바꿈/제어문자(한 줄로만)")
+    if len(v) > 200:
+        return (False, "너무 김(200자 이내)")
+    if "{{" in v or "}}" in v:
+        return (False, "플레이스홀더 토큰({{...}}) 포함 — 실제 값으로 입력하세요")
+    low = v.lower()
+    if ("sk-ant-" in low) or low.startswith("sk-") or ("api_key" in low) or ("password" in low):
+        return (False, "시크릿/키로 보임(이 파일에 시크릿 금지)")
+    if _IPV4_RE.search(v):
+        return (False, "IP 주소로 보임(IP·호스트는 이 파일 금지 — 환경변수/메모리로)")
+    if _EMAIL_RE.search(v):
+        return (False, "이메일/계정으로 보임(개인정보 금지)")
+    return (True, "")
+
+
+def set_claude_identity(role="", topology="", aliases=""):
+    """설치기 폼의 CLAUDE.md 3값을 베이크된 ~/.claude/CLAUDE.md 플레이스홀더에 치환(narrow 진입점·#2).
+
+    설계 §5.3: 이 진입점은 **3 플레이스홀더 리터럴 토큰만** 치환한다(다른 개인화·템플릿 교체는
+    마법사 잔류·C4 정합). install 통째 호출 금지(apply-installer-onboarding 과 동형 이유).
+    - 빈 값은 스킵(플레이스홀더 유지 → 첫 실행 /cockpit-setup 이 채움). 3값 다 비면 no-op(exit 0).
+    - 멱등: 이미 채워진(토큰 부재) 필드는 무변경 — 유저가 손댄 값을 덮어쓰지 않는다.
+    - 백업 없음: 불활성 {{...}} 토큰만 교체하고 유저 산문은 미접촉 → rollback 대상(install)과 분리."""
+    raw = {"role": role, "topology": topology, "aliases": aliases}
+    vals = {}
+    for k, v in raw.items():
+        v = (v or "").strip()
+        if not v:
+            continue
+        ok, why = _identity_value_ok(v)
+        if not ok:
+            _p(WARN, "%s 값 건너뜀(%s)." % (k, why))
+            continue
+        vals[k] = v
+    if not vals:
+        _p(INFO, "채울 CLAUDE.md 개인화 값이 없습니다 — 플레이스홀더 유지(첫 실행 /cockpit-setup 에서 채움).")
+        return 0
+    if not os.path.exists(CLAUDE_MD):
+        _p(WARN, "~/.claude/CLAUDE.md 없음 — 개인화 미반영(설치는 계속). /cockpit-setup install 로 생성 후 채우세요.")
+        return 1
+    try:
+        with open(CLAUDE_MD, encoding="utf-8") as f:
+            text = f.read()
+        mode = os.stat(CLAUDE_MD).st_mode & 0o777
+    except OSError as e:
+        _p(BAD, "CLAUDE.md 읽기 실패(%s) — 개인화 미반영(설치는 계속)." % e)
+        return 1
+    changed, already = [], []
+    for token, key, label in CLAUDE_IDENTITY_FIELDS:
+        if key not in vals:
+            continue
+        if token in text:
+            text = text.replace(token, vals[key])
+            changed.append(label)
+        else:
+            already.append(label)   # 토큰 부재 = 이미 채워졌거나 사용자 정의 CLAUDE.md → 덮지 않음
+    if not changed:
+        _p(INFO, "치환할 플레이스홀더가 없습니다(이미 채워졌거나 사용자 정의 CLAUDE.md) — 무변경.")
+        return 0
+    tmp = CLAUDE_MD + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, CLAUDE_MD)   # 원자적 교체(크래시에도 원본/신본 중 하나·부분쓰기 없음)
+        try:
+            os.chmod(CLAUDE_MD, mode)   # 원본 권한 보존(provision 은 0644)
+        except OSError:
+            pass
+    except OSError as e:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        _p(BAD, "CLAUDE.md 쓰기 실패(%s) — 미반영(설치는 계속)." % e)
+        return 1
+    _p(OK, "CLAUDE.md 개인화 반영: %s" % ", ".join(changed))
+    if already:
+        _p(INFO, "이미 값이 있어 건너뜀(덮어쓰지 않음): %s." % ", ".join(already))
+    return 0
+
+
 # ───────────────────────── install ─────────────────────────
 def install(apply, enable_bypass, accepted=False, replace_claude_md=False, enable_egress=False):
     if enable_bypass and not accepted:
@@ -781,12 +885,17 @@ def install(apply, enable_bypass, accepted=False, replace_claude_md=False, enabl
     if _dir_nonempty(MEMORY_DIR):
         actions.append("메모리 저장소 보존(이미 내용 있음): %s" % MEMORY_DIR)
     else:
-        actions.append("메모리 저장소를 예시 템플릿으로 초기화: %s" % MEMORY_DIR)
+        actions.append("메모리 저장소를 시작 템플릿으로 초기화: %s" % MEMORY_DIR)
         if apply:
             os.makedirs(MEMORY_DIR, exist_ok=True)
+            # 라이브 메모리엔 시작 템플릿(빈 인덱스+PROJECT_STATUS)만 넣는다. example_* 견본은
+            # examples/ 하위(비복사)에 두므로 나중에 정리할 예시가 남지 않는다(#4). top-level 파일만
+            # 복사(하위 디렉터리·example_* 는 명시적으로 건너뜀 — 견본이 라이브로 새는 것 방지).
             for nm in os.listdir(MEMORY_TEMPLATE):
-                if nm.endswith(".md"):
-                    shutil.copy2(os.path.join(MEMORY_TEMPLATE, nm), os.path.join(MEMORY_DIR, nm))
+                src = os.path.join(MEMORY_TEMPLATE, nm)
+                if nm.startswith("example_") or not nm.endswith(".md") or not os.path.isfile(src):
+                    continue
+                shutil.copy2(src, os.path.join(MEMORY_DIR, nm))
         created.append(MEMORY_DIR + "/*(template)")
 
     # 3) CLAUDE.md 행동 규율(기존은 백업 후 교체)
@@ -966,6 +1075,10 @@ def main():
                     help="설치기의 대시보드 뷰어 설치 결과")
     ao.add_argument("--source", choices=["installer"], default="installer",
                     help="결정 출처(폼 명시 제출 경로만 — 무인/취소는 이 명령 자체를 호출하지 않음)")
+    sci = sub.add_parser("set-claude-identity")
+    sci.add_argument("--role", default="", help="{{USER_ROLE}} — 나는 누구인가(역할). 비우면 스킵")
+    sci.add_argument("--topology", default="", help="{{DEVICE_TOPOLOGY}} — 기기·원격 토폴로지. 비우면 스킵")
+    sci.add_argument("--aliases", default="", help="{{PATH_ALIASES}} — 경로 약칭(개인 관습). 비우면 스킵")
     rb = sub.add_parser("rollback")
     rb.add_argument("--latest", action="store_true")
     rb.add_argument("--list", action="store_true")
@@ -985,6 +1098,8 @@ def main():
                                           dashboard=args.dashboard,
                                           governance_ack=args.governance_ack,
                                           source=args.source)
+    if args.cmd == "set-claude-identity":
+        return set_claude_identity(role=args.role, topology=args.topology, aliases=args.aliases)
     if args.cmd == "rollback":
         return rollback("--list" if args.list else "--latest")
     return 1
