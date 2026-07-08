@@ -443,6 +443,24 @@ _bdup=$(grep -lE '(^|[[:space:]])(export[[:space:]]+)?BROWSER=' "$ROOTFS"/etc/pr
 [ -z "$_bdup" ] && OK "profile.d BROWSER 정의 단일(cockpit-browser.sh)" \
   || FAIL "profile.d 에 BROWSER 중복 정의:$(echo "$_bdup" | sed "s|$ROOTFS||g" | tr '\n' ' ')"
 
+# ── 8b) 원터치 런처 launch.sh(#3 설치후 UX — claude 자동실행 + 로그인후 원샷 재시작). ──
+# PRECONFIGURE 게이트 안(§(a))이라 사전설정 이미지에만 존재 → 있으면 핵심 불변식을 FAIL 로 검사,
+# 없으면 skip(PRECONFIGURE=0/구버전). 존재검사만으론 로그인감지·원샷마커·intro 재시작·항상0종료 회귀
+# 미탐(Codex 4f 발견1) → 각 라인 grep.
+sec "8b) launch.sh(#3 설치후 UX·로그인후 원샷 재시작)"
+LSH=$(find "$ROOTFS"/home -path '*/.cockpit/launch.sh' 2>/dev/null | head -1)
+if [ -n "$LSH" ] && [ -f "$LSH" ]; then
+  [ -x "$LSH" ] && OK "launch.sh 존재(+x)" || FAIL "launch.sh 실행비트 없음 — chmod 회귀"
+  grep -qF '.credentials.json' "$LSH" && OK "launch.sh 로그인 감지(.credentials.json)" || FAIL "launch.sh 로그인 감지 회귀"
+  grep -qF 'first-login-restart-done' "$LSH" && OK "launch.sh 원샷 재시작 마커" || FAIL "launch.sh 원샷 마커 회귀(무한재시작 위험)"
+  grep -qF 'CLAUDE_CONFIG_DIR' "$LSH" && OK "launch.sh CLAUDE_CONFIG_DIR 존중" || FAIL "launch.sh CLAUDE_CONFIG_DIR 미존중 회귀"
+  grep -qF 'claude "$_intro"' "$LSH" && OK "launch.sh 로그인후 인사 프롬프트 재시작(intro)" || FAIL "launch.sh intro 재시작 회귀"
+  grep -qF 'cockpit-open-url' "$LSH" && OK "launch.sh BROWSER 폴백" || FAIL "launch.sh BROWSER 폴백 회귀"
+  grep -qE '^exit 0$' "$LSH" && OK "launch.sh 항상 0 종료 계약(.cmd errorlevel 레이어 고정)" || FAIL "launch.sh exit 0 계약 회귀"
+else
+  OK "launch.sh 없음(PRECONFIGURE=0/구버전 — 검증 skip)"
+fi
+
 # ── 9) 대시보드 수명관리 스크립트(provision §5.6 무조건 설치) ──
 # 뷰어 본체는 굽지 않지만(reference-not-vendor·§6(d) 자동시작 OFF 불변식 유지), 기동/종료
 # 진입점 cockpit-dashboard 는 무조건 베이크. 누락·핵심 불변식 후퇴=사일런트 회귀 차단(FAIL).

@@ -41,7 +41,10 @@ rem ---- STEP 1: derive the /mnt backup path via wslpath - never hand-assemble
 rem      it (handles drive letter, spaces, OneDrive redirect, non-C drives). ----
 set "WINBK=%USERPROFILE%\cockpit-backups"
 set "MNTBK="
-for /f "usebackq delims=" %%P in (`"%WSL%" -d %DISTRO% -- wslpath -u "%WINBK%" 2^>nul`) do set "MNTBK=%%P"
+rem NOTE(fix): wrap whole backtick cmd in an extra outer quote pair. Without it,
+rem for/f mis-strips the leading quote of "%WSL%" and captures nothing (MNTBK empty
+rem -> :backupfail: auto-backup silently skipped). Proven on Win/CP949 (SSH A/B).
+for /f "usebackq delims=" %%P in (`""%WSL%" -d %DISTRO% -- wslpath -u "%WINBK%" 2^>nul"`) do set "MNTBK=%%P"
 if "%MNTBK%"=="" goto :backupfail
 
 rem ---- STEP 2: auto-backup into that Windows folder. Pass the /mnt path via

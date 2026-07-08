@@ -56,7 +56,7 @@ jobs:
     name: 골든 이미지 빌드 + SBOM + 스모크
     runs-on: ubuntu-latest
     permissions:
-      contents: read    # checkout·git log(SOURCE_DATE_EPOCH·plugin_commit 산출)
+      contents: write   # checkout·git log + 이미지 전송용 Release 자산 업로드(golden-staging·아티팩트 쿼터 우회). 이 잡에만 스코프.
       actions: write    # 이전 동일이름 아티팩트 삭제(스토리지 쿼터 — 동시 1개 제한). 이 잡에만 스코프.
     steps:
       - name: 이전 골든이미지 아티팩트 정리(동시 1개 제한 — 무료 스토리지 쿼터 0.5GB < 이미지 2개)
@@ -79,7 +79,7 @@ jobs:
             gh api -X DELETE "/repos/${GITHUB_REPOSITORY}/actions/artifacts/$id"
           done
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with: { fetch-depth: 0 }   # plugin_commit·SOURCE_DATE_EPOCH 산출용 전체 이력
+        with: { fetch-depth: 0, persist-credentials: false }   # 전체 이력(plugin_commit·SOURCE_DATE_EPOCH). contents:write 토큰을 워크스페이스에 남기지 않음(Codex 발견2 — Release 업로드는 스텝 env GH_TOKEN 만 사용).
 
       - name: 빌드 파라미터(SOURCE_DATE_EPOCH=커밋 시각)
         id: params
@@ -140,7 +140,8 @@ jobs:
           if [ "$IS_PUBLISH" = "true" ]; then PUBLISH=1 bash scripts/smoke-image.sh dist/windows/cockpit-wsl.tar.gz
           else bash scripts/smoke-image.sh dist/windows/cockpit-wsl.tar.gz; fi
 
-      - name: 산출물 업로드
+      - name: 산출물 업로드(아티팩트·publish-gate 잡 download 용·쿼터 초과 시 비치명)
+        continue-on-error: true   # 무료 0.5GB 쿼터+6-12h 지연 재계산으로 실패 가능. 정본 전송=아래 Release 스텝.
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: cockpit-golden-image
@@ -156,6 +157,31 @@ jobs:
           # 겹치면 초과 → 동시개수 캡은 위 '이전 아티팩트 정리' 스텝(빌드 시작 시 기존분 삭제=동시 1개)이 담당.
           # 즉 retention=적재 상한(시간)·정리 스텝=동시 상한(개수)의 이중 방어. (정석 해법 = Release 자산 발행은 후속 후보.)
           retention-days: 3
+
+      - name: 산출물 Release 전송(정석·아티팩트 쿼터 우회)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Actions 아티팩트(무료 0.5GB·삭제분 6-12h 지연 재계산)로는 438MB 이미지 전송이 막힌다.
+          # Release 자산은 Actions 스토리지 쿼터와 무관 → 같은 repo prerelease 'golden-staging' 에
+          # clobber 업로드. 배포자가 여기서 download → 핀 치환 → cockpit 릴리스 자산으로 승격한다.
+          # 발행 자산 아님(전송·스테이징 전용). [[reference_gha_artifact_storage_quota]] '정석=Release 자산'.
+          gh release view golden-staging -R "$REPO" >/dev/null 2>&1 \
+            || gh release create golden-staging -R "$REPO" --prerelease --latest=false \
+                 --title "golden-build staging (transport only)" \
+                 --notes "골든 이미지 전송용 스테이징(발행 자산 아님·사용자 배포용 아님). 매 빌드 최신본으로 clobber."
+          gh release upload golden-staging -R "$REPO" --clobber \
+            dist/windows/cockpit-wsl.tar.gz \
+            dist/windows/cockpit-wsl.tar.gz.sha256 \
+            dist/windows/provenance.json \
+            dist/windows/cockpit-wsl.sbom*.json
+          # 업로드 후 검증(Codex 발견4 — --clobber 부분실패 시 반쪽 자산 방지): 핵심 2종 존재 강제.
+          names="$(gh release view golden-staging -R "$REPO" --json assets --jq '.assets[].name')"
+          for req in cockpit-wsl.tar.gz cockpit-wsl.tar.gz.sha256; do
+            printf '%s\n' "$names" | grep -qx "$req" || { echo "::error::golden-staging 전송 불완전 — '$req' 누락"; exit 1; }
+          done
+          echo "전송·검증 완료: $REPO release golden-staging (필수 자산 tar.gz/.sha256 확인)"
 
   windows-smoke:
     name: Windows 스모크(PS5.1 게이트 발화 + 서명)
@@ -190,11 +216,25 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with: { fetch-depth: 0 }
-      - name: 빌드 산출물 내려받기(핀-해시 교차검증용)
+      - name: 빌드 산출물 내려받기(아티팩트·쿼터 초과 시 비치명)
+        continue-on-error: true   # 쿼터로 build 잡 아티팩트 업로드가 실패했을 수 있음 → 아래 Release fallback.
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: cockpit-golden-image
           path: dist/windows
+      - name: 산출물 fallback(Release golden-staging·아티팩트 부재 시)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # 아티팩트가 쿼터로 비면 build 잡이 정본 전송한 Release(golden-staging)에서 받는다(Codex 발견1).
+          if [ ! -f dist/windows/cockpit-wsl.tar.gz ]; then
+            echo "아티팩트 부재 → Release golden-staging 에서 fallback download"
+            mkdir -p dist/windows
+            gh release download golden-staging -R "$REPO" -D dist/windows --clobber \
+              -p 'cockpit-wsl.tar.gz' -p 'cockpit-wsl.tar.gz.sha256' -p 'provenance.json' -p 'cockpit-wsl.sbom*.json'
+          fi
+          [ -f dist/windows/cockpit-wsl.tar.gz ] || { echo "::error::산출물 확보 실패(아티팩트·Release 둘 다 없음)"; exit 1; }
       - name: publish-gate.sh
         # STRICT: 산출물을 내려받은 뒤 실행하므로, dist 부재로 '검증 생략'되는 WARN 을 BLOCK 으로 승격한다
         # (download-artifact 가 조용히 비면 image/핀 대조 스킵을 차단). Codex 4f 발견2.

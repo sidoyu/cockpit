@@ -594,17 +594,16 @@ cockpit (cc-companion) — WSL2 골든 이미지
 당신이 추가로 **직접 켜는** 외부송신은 단 하나 — **기억 자동추출의 추가 API 송신**
 (세션 본문을 Anthropic API 로 보내 기억을 뽑는 별도 송신, 첫 실행 한 화면)입니다.
 
-첫 실행:
-  1) claude 실행 → /login   # Claude Code 로그인(브라우저 OAuth) — 최초 1회.
-     브라우저가 자동으로 열립니다(안 열리면 화면에 표시된 URL 을 직접 여세요).
-  2) claude 재시작(exit 후 다시 claude) → claude.ai/code 원격조종 활성.
-     (최초 실행은 미로그인 상태라 원격 연결이 조용히 꺼진 채 재시도하지 않습니다 —
-      로그인 후 한 번 재시작해야 켜집니다.)
+첫 실행(바탕화면/시작메뉴 'Claude (cockpit)' 더블클릭 → claude 자동 실행):
+  1) 로그인(최초 1회): /login → 브라우저가 자동으로 열립니다
+     (안 열리면 화면에 표시된 URL 을 직접 여세요) → "Claude 구독으로 로그인"(대개 1번) 선택.
+  2) 로그인하면 창이 자동으로 한 번 다시 시작되며(원격조종 활성) Claude 가 사용법을 안내합니다
+     — 수동 재시작 불필요. 혹시 자동 재시작이 안 되면, 창을 닫고 'Claude (cockpit)' 을 다시 실행하세요.
 
 $PLUGIN_STEPS
 
 원격조종(claude.ai Code 탭에서 이 세션 잇기): 설정은 이미 켜져 있습니다(remoteControlAtStartup).
-  단, 위 '첫 실행 2)'까지 마쳐야(로그인 후 재시작) 실제로 연결됩니다. claude.ai/code 에
+  단, 로그인 후 자동으로 한 번 다시 시작된 세션부터 실제로 연결됩니다(위 '첫 실행 2'). claude.ai/code 에
   같은 계정으로 들어가면 세션 목록에 나타납니다. 수신 포트를 열지 않고 아웃바운드(나가는)
   통신만 씁니다 — VPN/포트 설정 불필요.
 
@@ -644,9 +643,51 @@ if [ "$COCKPIT_PRECONFIGURE" = "1" ]; then
 # cockpit 원터치 런처 — Windows 바로가기가 호출(wsl.exe -d cc-cockpit ...).
 export LANG=C.UTF-8
 export DISABLE_AUTOUPDATER=1   # 자동업뎃 빨간경고 제거(수동 `claude update` 는 막지 않음)
+# BROWSER 배관 보강: 로그인 셸이면 /etc/profile.d/cockpit-browser.sh 가 이미 설정(/login OAuth 자동 오픈).
+#   비로그인 진입 대비 폴백만 — 이미 설정돼 있으면 손대지 않는다.
+[ -n "${BROWSER:-}" ] || { [ -x /usr/local/bin/cockpit-open-url ] && export BROWSER=/usr/local/bin/cockpit-open-url; }
 cd "$HOME" 2>/dev/null || cd /
+
+# ── #3 최초 로그인 후 1회 자동 재시작(원격조종 활성 + 사용법 소개) ─────────────
+#  claude 는 '시작 시점에 로그인돼 있어야' claude.ai/code 원격조종이 붙는다(미로그인 최초 실행은 조용히
+#  꺼짐). 로그인 직후 딱 1회 재시작해 활성화하고, 그 재시작 세션을 짧은 인사 프롬프트로 시작해 Claude 가
+#  스스로 사용법을 안내한다. 무한 재시작은 원샷 마커로 차단. 로그인 판정 = 자격파일 존재(0600·OAuth 로
+#  생성·백업 미포함·실기 확인). CLAUDE_CONFIG_DIR 설정 시 그 경로 존중.
+CC_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CREDS="$CC_DIR/.credentials.json"
+MARK="$HOME/.cockpit/first-login-restart-done"
+_logged_in() { [ -s "$CREDS" ]; }
+
+was_logged_in=0
+_logged_in && was_logged_in=1
+
+# 미로그인 최초 진입 안내(구독=대개 1번). TUI 가 화면을 덮을 수 있어 best-effort — 확실한 안내는
+# 설치기 '다음 단계' 메시지·README-first-run.txt 가 별도 제공.
+if [ "$was_logged_in" = 0 ] && [ ! -e "$MARK" ]; then
+  printf '%s\n' \
+    '------------------------------------------------------------' \
+    '  처음이면 로그인 한 번만 하면 됩니다:' \
+    '    1) 아래 화면에서  /login  입력' \
+    '    2) 브라우저가 열리면 "Claude 구독으로 로그인"(대개 1번) 선택' \
+    '    3) 로그인하면 이 창이 자동으로 한 번 다시 시작되며 사용법을 안내합니다.' \
+    '------------------------------------------------------------'
+fi
+
 claude
 ec=$?
+
+# 방금 최초 로그인했으면(직전 미로그인 → 현재 로그인) 딱 1회 재시작. claude 에 인사 프롬프트를 첫
+# 대화 메시지로 넘겨 Claude 가 스스로 짧게 사용법을 안내한다. 재시작 세션은 이미 로그인 상태라 OAuth
+# 흐름과 충돌하지 않는다. 브라우저·네트워크 문제로 로그인 안 됐으면 이 분기를 건너뜀(수동 폴백 자연 유지).
+if [ "$was_logged_in" = 0 ] && _logged_in && [ ! -e "$MARK" ]; then
+  install -d -m 0755 "$(dirname "$MARK")" 2>/dev/null
+  : > "$MARK" 2>/dev/null   # 원샷 마커(무한 재시작 방지). 쓰기 실패해도 was_logged_in 가드가 재발 차단.
+  printf '%s\n' '' '  로그인 완료 — 원격조종을 켜고 사용법을 안내하려 한 번만 다시 시작합니다…' ''
+  _intro='방금 이 도구(cockpit·Claude Code)를 처음 설치하고 로그인한 사용자야. 개발을 잘 모르는 사람이니 한국어로 아주 짧고 친근하게 환영 인사를 하고, 이 도구로 할 수 있는 일 예시 2~3개(예: 파일 정리, 문서 초안 작성, 자료 조사)만 들고, 지금 무엇을 도와줄지 한 가지만 물어봐. 5줄 이내로 짧게.'
+  claude "$_intro"
+  ec=$?
+fi
+
 if [ "$ec" -ne 0 ]; then
   echo; echo "[cockpit] claude 종료 코드 $ec"
   read -r -p "닫으려면 Enter..."

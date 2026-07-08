@@ -133,7 +133,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/dashboard/install-viewer.sh"
 python3 ".../setup.py" install --apply [--i-accept-governance] [--enable-bypass] [--enable-memory-egress] [--replace-claude-md]
 ```
 `--i-accept-governance` 는 GOVERNANCE(특히 §3 외부 송출·§8 동의)를 읽고 동의했다는 신호로, **위험 기능 플래그의 공통 전제**다. 동의만으로는 아무 위험 기능도 켜지지 않으며, **각 기능마다 별도 플래그가 추가로 필요**하다: ① `--enable-bypass`(권한 확인 생략) ② `--enable-memory-egress`(메모리 자동추출의 외부 송신 — 없으면 세션 본문이 외부로 나가지 않음, 키가 있어도 no-op). **0단계에서 사용자가 명시적으로 동의했을 때만** `--i-accept-governance` 를 전달하고, bypass·egress 는 각각 3·3.5단계 결정에 따라 해당 플래그를 붙인다. 기존 CLAUDE.md 가 다르면 `--replace-claude-md` 없이는 보존(거부)된다.
-완료 후: ① `~/.claude/CLAUDE.md` 의 `{{...}}` 플레이스홀더(언어·역할·경로 약칭 등)를 사용자와 함께 채운다. ② 메모리 저장소(`~/.claude/cc-memory`)는 빈 인덱스와 `PROJECT_STATUS.md` 로 시작한다 — 예시 기억은 넣지 않으므로 따로 정리할 게 없다. 기억 작성 형식이 궁금하면 `${CLAUDE_PLUGIN_ROOT}/memory-template/examples/`(참고 견본)를 안내한다. ③ 새 세션을 시작하면 세션 시작 훅이 PROJECT_STATUS 를 주입하고, 종료 시 기억 후보가 쌓임을 설명한다.
+완료 후: ① `~/.claude/CLAUDE.md` 의 `{{...}}` 플레이스홀더(언어·역할 등)를 사용자와 함께 채운다. ② 메모리 저장소(`~/.claude/cc-memory`)는 빈 인덱스와 `PROJECT_STATUS.md` 로 시작한다 — 예시 기억은 넣지 않으므로 따로 정리할 게 없다. 기억 작성 형식이 궁금하면 `${CLAUDE_PLUGIN_ROOT}/memory-template/examples/`(참고 견본)를 안내한다. ③ 새 세션을 시작하면 세션 시작 훅이 PROJECT_STATUS 를 주입하고, 종료 시 기억 후보가 쌓임을 설명한다.
 
 ### 5. 사후 점검
 ```

@@ -239,8 +239,8 @@ if ($LauncherCmd) {
 if ($DashboardCmd) {
   Write-Host "  • 바탕화면 'Cockpit Dashboard' 더블클릭 → 세션 대시보드(선택 기능·/cockpit-setup 옵트인 후 동작·창 닫으면 꺼짐)."
 }
-Write-Host "  1) claude 로그인(최초 1회): 실행 후 /login"
-Write-Host "  2) 로그인 후 claude 재시작 → claude.ai/code 원격조종 활성(최초 실행은 미로그인이라 원격이 조용히 꺼져 있음)."
+Write-Host "  1) 로그인(최초 1회): claude 화면에서 /login → 브라우저에서 'Claude 구독으로 로그인'(보통 1번) 선택."
+Write-Host "  2) 로그인하면 창이 자동으로 한 번 다시 시작되며 원격조종이 켜집니다(수동 재시작 불필요. 안 되면 창 닫고 다시 실행)."
 Write-Host "  3) /plugin marketplace add $MarketplaceUrl"
 Write-Host "  4) /plugin install cockpit@cc-companion"
 Write-Host "  5) /cockpit-setup     # 거버넌스 동의 한 화면 + (원하면) 기억 외부송신 켜기"

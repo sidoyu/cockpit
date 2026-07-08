@@ -14,9 +14,9 @@
                              [--key-registered {yes,no}] [--dashboard {installed,skipped,failed}]
                             Windows 설치기 온보딩 폼의 결정값 적용(v0.1.8·narrow 진입점).
                             install 의 다른 책임(CLAUDE.md·settings·메모리 템플릿)은 일절 미접촉.
-  set-claude-identity [--role ..] [--topology ..] [--aliases ..]
-                            베이크된 ~/.claude/CLAUDE.md 의 3 플레이스홀더
-                            ({{USER_ROLE}}·{{DEVICE_TOPOLOGY}}·{{PATH_ALIASES}})만 폼 값으로 치환(v0.1.10·#2).
+  set-claude-identity [--role ..]  ([--topology ..] [--aliases ..] = deprecated no-op)
+                            베이크된 ~/.claude/CLAUDE.md 의 {{USER_ROLE}} 만 폼 값으로 치환(v0.1.11·#2).
+                            옛 {{DEVICE_TOPOLOGY}}·{{PATH_ALIASES}} 는 폼·템플릿에서 제거(하위호환 인자만 유지).
                             빈 값은 스킵(플레이스홀더 유지→마법사). 시크릿/개인정보 금지(방어 필터).
   rollback [--latest|--list]  마지막(또는 지정) 백업으로 복원.
 
@@ -727,12 +727,12 @@ def apply_installer_onboarding(memory_egress, key_registered, dashboard, governa
     return 0
 
 
-# 베이크된 CLAUDE.md 의 3 개인화 플레이스홀더(provision 은 {{PRIMARY_LANGUAGE}} 만 이미 치환·L711).
+# 베이크된 CLAUDE.md 의 개인화 플레이스홀더(provision 은 {{PRIMARY_LANGUAGE}} 만 이미 치환·L711).
 #   토큰 → (폼 인자 키, 사람용 라벨). PRIMARY_LANGUAGE 는 대상 아님(기본 한국어).
+#   v0.1.11(#2): 옛 {{DEVICE_TOPOLOGY}}·{{PATH_ALIASES}} 는 저리터러시 불친절 → 폼·템플릿에서 제거,
+#   여기서도 삭제(동윤 결정 2026-07-08). --topology/--aliases 인자는 하위호환 deprecated no-op 로만 수용.
 CLAUDE_IDENTITY_FIELDS = (
     ("{{USER_ROLE}}", "role", "역할"),
-    ("{{DEVICE_TOPOLOGY}}", "topology", "기기·토폴로지"),
-    ("{{PATH_ALIASES}}", "aliases", "경로 약칭"),
 )
 
 
@@ -762,14 +762,15 @@ def _identity_value_ok(v):
 
 
 def set_claude_identity(role="", topology="", aliases=""):
-    """설치기 폼의 CLAUDE.md 3값을 베이크된 ~/.claude/CLAUDE.md 플레이스홀더에 치환(narrow 진입점·#2).
+    """설치기 폼의 '역할'을 베이크된 ~/.claude/CLAUDE.md 의 {{USER_ROLE}} 에 치환(narrow 진입점·#2).
 
-    설계 §5.3: 이 진입점은 **3 플레이스홀더 리터럴 토큰만** 치환한다(다른 개인화·템플릿 교체는
-    마법사 잔류·C4 정합). install 통째 호출 금지(apply-installer-onboarding 과 동형 이유).
-    - 빈 값은 스킵(플레이스홀더 유지 → 첫 실행 /cockpit-setup 이 채움). 3값 다 비면 no-op(exit 0).
+    설계 §5.3: 이 진입점은 **CLAUDE_IDENTITY_FIELDS 의 리터럴 토큰만** 치환한다(다른 개인화·템플릿
+    교체는 마법사 잔류·C4 정합). install 통째 호출 금지(apply-installer-onboarding 과 동형 이유).
+    - 빈 값은 스킵(플레이스홀더 유지 → 첫 실행 /cockpit-setup 이 채움). 비면 no-op(exit 0).
     - 멱등: 이미 채워진(토큰 부재) 필드는 무변경 — 유저가 손댄 값을 덮어쓰지 않는다.
-    - 백업 없음: 불활성 {{...}} 토큰만 교체하고 유저 산문은 미접촉 → rollback 대상(install)과 분리."""
-    raw = {"role": role, "topology": topology, "aliases": aliases}
+    - 백업 없음: 불활성 {{...}} 토큰만 교체하고 유저 산문은 미접촉 → rollback 대상(install)과 분리.
+    - topology/aliases: v0.1.11(#2)에서 폼·템플릿 제거 → 인자는 받되 무시(deprecated no-op·하위호환)."""
+    raw = {"role": role}   # topology/aliases 는 deprecated — CLAUDE_IDENTITY_FIELDS 에 토큰 없어 무시됨
     vals = {}
     for k, v in raw.items():
         v = (v or "").strip()
@@ -1077,8 +1078,8 @@ def main():
                     help="결정 출처(폼 명시 제출 경로만 — 무인/취소는 이 명령 자체를 호출하지 않음)")
     sci = sub.add_parser("set-claude-identity")
     sci.add_argument("--role", default="", help="{{USER_ROLE}} — 나는 누구인가(역할). 비우면 스킵")
-    sci.add_argument("--topology", default="", help="{{DEVICE_TOPOLOGY}} — 기기·원격 토폴로지. 비우면 스킵")
-    sci.add_argument("--aliases", default="", help="{{PATH_ALIASES}} — 경로 약칭(개인 관습). 비우면 스킵")
+    sci.add_argument("--topology", default="", help="(deprecated v0.1.11·no-op·하위호환) 무시됨")
+    sci.add_argument("--aliases", default="", help="(deprecated v0.1.11·no-op·하위호환) 무시됨")
     rb = sub.add_parser("rollback")
     rb.add_argument("--latest", action="store_true")
     rb.add_argument("--list", action="store_true")
