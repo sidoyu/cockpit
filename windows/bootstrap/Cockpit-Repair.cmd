@@ -14,8 +14,8 @@ setlocal EnableExtensions
 rem ---- pinned values: MUST equal Cockpit-Install.cmd (same Install-Cockpit.ps1). The release
 rem      pipeline must re-pin BOTH .cmd together. publish-gate (section 1b) cross-checks THIS
 rem      Repair pin too: PS1_SHA256 == repo ps1 hash and PS1_URL == manifest bootstrap.url. ----
-set "PS1_URL=https://github.com/sidoyu/cockpit/releases/download/v0.1.11/Install-Cockpit.ps1"
-set "PS1_SHA256=e049649b033a2fb427121211bfe7826c59785888e80ee627959b0b81869a8fc7"
+set "PS1_URL=https://github.com/sidoyu/cockpit/releases/download/v0.1.12/Install-Cockpit.ps1"
+set "PS1_SHA256=0bc62588cfd5793da894ef6ec57b37c37e12a672fd00c2e34a017515223c8627"
 
 set "BASE=%~dp0"
 set "PS1=%BASE%Install-Cockpit.ps1"
