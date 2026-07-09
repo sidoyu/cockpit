@@ -502,6 +502,30 @@ def cleanup_nudge_section(counts=None, mem_size=None):
     return ""
 
 
+def wiring_section():
+    """기억 배선(settings.json `autoMemoryDirectory`)이 기억 저장소를 가리키는지 **매 세션** 확인.
+
+    끊겨 있으면 이 저장소의 MEMORY.md 색인은 세션에 로드되지 않는다(기억을 쌓아도 Claude 가 못 봄).
+    doctor 에도 같은 점검이 있지만 사용자가 doctor 를 안 돌리면 결함이 조용히 지속된다(Codex 4b) →
+    사용자가 아무것도 안 해도 보이도록 세션 시작에 표면화한다. 읽기 전용·절대 비차단."""
+    try:
+        settings = os.path.join(os.path.expanduser("~"), ".claude", "settings.json")
+        with open(settings, encoding="utf-8") as f:
+            cur = json.load(f).get("autoMemoryDirectory")
+        if isinstance(cur, str) and cur and \
+                os.path.realpath(os.path.expanduser(cur)) == os.path.realpath(MEMORY_DIR):
+            return ""
+        return ("[기억 배선 끊김 — 조치 필요]\n"
+                "settings.json 의 autoMemoryDirectory 가 기억 저장소(%s)를 가리키지 않습니다(현재: %s).\n"
+                "이 상태에선 MEMORY.md 색인이 세션에 로드되지 않아, 기억을 쌓아도 Claude 가 보지 못합니다.\n"
+                "고치기(한 번만): python3 \"${CLAUDE_PLUGIN_ROOT}/skills/setup-wizard/setup.py\" wire-auto-memory --apply\n"
+                "이전 기억이 ~/.claude/projects/*/memory/ 에 남아 있다면: "
+                "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/setup-wizard/import_existing.py\" adopt-native --apply"
+                % (MEMORY_DIR, cur if cur else "없음"))
+    except Exception:
+        return ""   # settings 부재·손상·권한 문제 등 — 세션 시작을 절대 막지 않는다
+
+
 def status_section():
     try:
         if os.path.getsize(STATUS_FILE) > 0:
@@ -646,7 +670,8 @@ def main():
         head = f"[session-context] cwd={cwd}" + (f" (git root: {cwd_root})" if cwd_root else "")
         parts = [head]
         pcounts = _pending_counts()  # (new, skipped, uncoded) 1회 스캔 → pending·nudge 공유(중복 디렉터리 스캔 방지)
-        for sec in (pending_section(pcounts), multisession_section(self_sid, cwd, cwd_root),
+        for sec in (wiring_section(), pending_section(pcounts),
+                    multisession_section(self_sid, cwd, cwd_root),
                     watcher_section(), memory_budget_section(), cleanup_nudge_section(pcounts),
                     status_section()):
             if sec and sec.strip():

@@ -210,6 +210,11 @@ while IFS= read -r s; do
   rbc=$(json_get "$s" respondToBashCommands)
   [ "$rbc" = "false" ] && OK "respondToBashCommands=false ($rel)" \
                        || FAIL "respondToBashCommands 가 false 아님('$rbc') — ! 자동응답 끔 미반영($rel)"
+  # 기억 배선: 내장 auto memory 위치 == cockpit 기억 저장소(cc_paths 기본). 빠지면 MEMORY.md 색인이
+  # 어떤 세션에도 로드되지 않는다(기억 시스템이 조용히 무력화). 실측 근거: 미설정=NOTSEEN / 설정=SEEN.
+  amd=$(json_get "$s" autoMemoryDirectory)
+  [ "$amd" = "~/.claude/cc-memory" ] && OK "autoMemoryDirectory=$amd ($rel)" \
+     || FAIL "autoMemoryDirectory 가 '~/.claude/cc-memory' 아님('$amd') — 기억 색인이 세션에 로드되지 않음($rel)"
   mdl=$(json_get "$s" model)
   if [ -n "$EXPECT_MODEL" ]; then
     [ "$mdl" = "$EXPECT_MODEL" ] && OK "model 핀 일치($mdl) ($rel)" \

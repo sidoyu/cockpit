@@ -27,7 +27,7 @@
   동의(--i-accept-governance) 만으로는 둘 중 어느 것도 켜지지 않는다(각 기능 플래그가 별도 필수).
 경로 규약은 cc_paths(단일 출처) 재사용.
 """
-import sys, os, json, shutil, time, argparse, subprocess, re
+import sys, os, json, shutil, time, argparse, subprocess, re, tempfile
 
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 TEMPLATES = os.path.join(PLUGIN_ROOT, "templates")
@@ -281,6 +281,33 @@ def doctor():
                ("일치" if rc == 0 else "드리프트(편집 후 자동 재생성 대기 가능)"))
     else:
         _p(INFO, "메모리 저장소 비어있음/없음 — 설치 시 시작 템플릿(빈 인덱스+PROJECT_STATUS)으로 채움")
+
+    # 기억 배선 — 내장 auto memory 위치가 cockpit 저장소와 일치하는가.
+    # 불일치면 MEMORY.md 색인이 **어떤 세션에도 로드되지 않는다**(기억을 쌓아도 Claude 가 못 봄).
+    wired, cur = _auto_memory_wiring()
+    if wired:
+        _p(OK, "기억 배선: autoMemoryDirectory → %s (색인이 세션 시작에 로드됨)" % MEMORY_DIR)
+        # 배선 전에 내장 auto memory 가 써 둔 기억이 남아 있으면 알려준다(삭제는 하지 않는다).
+        orphans = []
+        try:
+            proj = os.path.join(HOME, ".claude", "projects")
+            for pk in sorted(os.listdir(proj)):
+                d = os.path.join(proj, pk, "memory")
+                if os.path.isdir(d) and any(n.endswith(".md") for n in os.listdir(d)):
+                    orphans.append(pk)
+        except OSError:
+            pass
+        if orphans:
+            _p(INFO, "이제는 읽히지 않는 옛 기억 폴더 %d곳(~/.claude/projects/<저장소>/memory/): %s. "
+                     "가져오려면: python3 '%s' adopt-native --apply (원본은 지우지 않습니다)"
+               % (len(orphans), ", ".join(orphans[:3]),
+                  os.path.join(os.path.dirname(os.path.realpath(__file__)), "import_existing.py")))
+    else:
+        _p(WARN, "기억 배선 끊김: settings.json 의 autoMemoryDirectory=%s ≠ 기억 저장소=%s. "
+                 "이 상태에선 MEMORY.md 색인이 세션에 로드되지 않고, Claude 의 새 기억은 "
+                 "~/.claude/projects/<저장소>/memory/ 로 갈라져 쌓입니다. "
+                 "고치기: python3 '%s' wire-auto-memory --apply"
+           % (cur if cur else "(없음)", MEMORY_DIR, os.path.realpath(__file__)))
 
     # CLAUDE.md 충돌
     if os.path.exists(CLAUDE_MD):
@@ -543,6 +570,93 @@ def _settings_mode():
         return (s.get("permissions") or {}).get("defaultMode"), True
     except Exception:
         return None, True
+
+
+AUTO_MEMORY_KEY = "autoMemoryDirectory"
+
+
+def _auto_memory_expected():
+    """settings.json 에 기록할 값. 기본 위치면 이식성 있는 '~/.claude/cc-memory',
+    CC_MEMORY_DIR 로 옮겼다면 그 절대경로(Claude Code 는 절대경로 또는 '~/' 시작만 허용)."""
+    default = os.path.realpath(os.path.expanduser("~/.claude/cc-memory"))
+    return "~/.claude/cc-memory" if os.path.realpath(MEMORY_DIR) == default else MEMORY_DIR
+
+
+def _auto_memory_wiring():
+    """내장 auto memory 저장 위치가 cockpit 기억 저장소와 일치하는가 → (bool, 현재값 or None).
+    settings 부재·손상·키 부재는 전부 '끊김'(False). 읽기 전용."""
+    try:
+        with open(SETTINGS, encoding="utf-8") as f:
+            s = json.load(f)
+    except Exception:
+        return False, None
+    cur = s.get(AUTO_MEMORY_KEY)
+    if not cur or not isinstance(cur, str):
+        return False, None
+    return os.path.realpath(os.path.expanduser(cur)) == os.path.realpath(MEMORY_DIR), cur
+
+
+def wire_auto_memory(apply):
+    """settings.json 에 autoMemoryDirectory 를 멱등하게 심는다(다른 키 무접촉·원본 백업).
+
+    배경: cockpit 은 기억을 CC_MEMORY_DIR(기본 ~/.claude/cc-memory)에 두는데, Claude Code 내장
+    auto memory 의 기본 위치는 ~/.claude/projects/<저장소>/memory/ 다. 이 키가 없으면 cockpit 의
+    MEMORY.md 색인은 **세션에 로드되지 않는다**(실측: 미설정=NOTSEEN, 설정=SEEN). 신규 이미지는
+    provision 이 굽고, 이미 설치된 환경은 이 명령이 고친다."""
+    expected = _auto_memory_expected()
+    wired, cur = _auto_memory_wiring()
+    print("[cockpit wire-auto-memory] %s\n" % ("APPLY(실제 변경)" if apply else "DRY-RUN(미리보기)"))
+    _p(INFO, "기억 저장소: %s" % MEMORY_DIR)
+    _p(INFO, "현재 %s: %s" % (AUTO_MEMORY_KEY, cur if cur else "(없음)"))
+    if wired:
+        _p(OK, "이미 배선됨 — 변경 없음(멱등).")
+        return 0
+
+    s = {}
+    if os.path.exists(SETTINGS):
+        try:
+            with open(SETTINGS, encoding="utf-8") as f:
+                s = json.load(f)
+            if not isinstance(s, dict):
+                raise ValueError("최상위가 객체가 아님")
+        except Exception as e:
+            _p(BAD, "settings.json 파싱 실패(%s) — 중단(기존 설정 보호). 먼저 고치거나 백업 후 재시도." % e)
+            return 2
+
+    _p(INFO, "적용예정: %s = %s" % (AUTO_MEMORY_KEY, expected))
+    if not apply:
+        print("\n[dry-run] 적용하려면:  python3 '%s' wire-auto-memory --apply" % os.path.realpath(__file__))
+        return 0
+
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    bdir = os.path.join(BACKUP_ROOT, ts)
+    if os.path.exists(SETTINGS):
+        os.makedirs(bdir, exist_ok=True)
+        shutil.copy2(SETTINGS, os.path.join(bdir, "settings.json"))
+        _p(OK, "원본 백업: %s" % os.path.join(bdir, "settings.json"))
+
+    s[AUTO_MEMORY_KEY] = expected
+    os.makedirs(os.path.dirname(SETTINGS), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(SETTINGS), prefix=".settings-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(s, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, SETTINGS)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+    wired2, cur2 = _auto_memory_wiring()
+    if not wired2:
+        _p(BAD, "적용 후 검증 실패(현재값=%s) — 수동 확인 필요." % cur2)
+        return 2
+    _p(OK, "배선 완료 — 다음 **새 세션**부터 MEMORY.md 색인이 로드됩니다(현 세션엔 미반영).")
+    return 0
 
 
 def _files_differ(a, b):
@@ -1080,6 +1194,11 @@ def main():
     sci.add_argument("--role", default="", help="{{USER_ROLE}} — 나는 누구인가(역할). 비우면 스킵")
     sci.add_argument("--topology", default="", help="(deprecated v0.1.11·no-op·하위호환) 무시됨")
     sci.add_argument("--aliases", default="", help="(deprecated v0.1.11·no-op·하위호환) 무시됨")
+    wm = sub.add_parser("wire-auto-memory",
+                        help="내장 auto memory 저장 위치를 cockpit 기억 저장소로 일치시킴(멱등·백업). "
+                             "미배선이면 MEMORY.md 색인이 세션에 로드되지 않는다.")
+    wm.add_argument("--apply", action="store_true", help="실제 변경(기본=dry-run)")
+    wm.add_argument("--dry-run", action="store_true", help="미리보기(기본)")
     rb = sub.add_parser("rollback")
     rb.add_argument("--latest", action="store_true")
     rb.add_argument("--list", action="store_true")
@@ -1101,6 +1220,8 @@ def main():
                                           source=args.source)
     if args.cmd == "set-claude-identity":
         return set_claude_identity(role=args.role, topology=args.topology, aliases=args.aliases)
+    if args.cmd == "wire-auto-memory":
+        return wire_auto_memory(apply=args.apply and not args.dry_run)
     if args.cmd == "rollback":
         return rollback("--list" if args.list else "--latest")
     return 1

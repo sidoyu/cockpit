@@ -707,8 +707,8 @@ LAUNCH
   fi
 
   # (c) settings.json — effort·model·remoteControlAtStartup·agentPushNotifEnabled·respondToBashCommands
-  #     는 항상, bypass·skipDangerous 는 _bake_bypass=1(=CLAUDE.md 동반 가능) 일 때만. model 핀은 COCKPIT_MODEL_PIN="" 면 생략
-  #     (계정 기본). 개인 permissions.allow 는 미포함.
+  #     ·autoMemoryDirectory 는 항상, bypass·skipDangerous 는 _bake_bypass=1(=CLAUDE.md 동반 가능) 일 때만.
+  #     model 핀은 COCKPIT_MODEL_PIN="" 면 생략(계정 기본). 개인 permissions.allow 는 미포함.
   if [ ! -e "$CLAUDE_DIR/settings.json" ]; then
     if command -v python3 >/dev/null 2>&1; then
       python3 - "$CLAUDE_DIR/settings.json" "$COCKPIT_MODEL_PIN" "$COCKPIT_EFFORT" "$_bake_bypass" <<'PYSET'
@@ -719,6 +719,12 @@ s = {
     "remoteControlAtStartup": True,              # claude.ai Code 탭 연결(아웃바운드 HTTPS·수신포트 없음)
     "agentPushNotifEnabled": True,               # Remote Control 연결 시 작업완료 푸시(인가된 본인 모바일만·신규 포트/egress 없음)
     "respondToBashCommands": False,              # ! bash 출력 자동응답 끔(토큰 절약·기본값 true 를 명시적으로 끔)
+    # Claude Code 내장 auto memory 의 저장 위치를 cockpit 기억 저장소(cc_paths.MEMORY_DIR)로 일치시킨다.
+    # 이 키가 없으면 내장 auto memory 는 ~/.claude/projects/<repo>/memory/ 를 쓰고, cockpit 의
+    # cc-memory/MEMORY.md 는 **어떤 세션에도 로드되지 않는다**(실측: 미설정=NOTSEEN / 설정=SEEN).
+    # 즉 기억 파일·색인·예산 가드가 전부 살아 있는데 Claude 가 못 본다. 이 한 줄이 그 배선이다.
+    # 값은 cc_paths 기본과 동일해야 한다(CC_MEMORY_DIR 로 옮겼다면 doctor 가 불일치를 경고).
+    "autoMemoryDirectory": "~/.claude/cc-memory",
 }
 if bake_bypass == "1":
     s["permissions"] = {"defaultMode": "bypassPermissions"}
