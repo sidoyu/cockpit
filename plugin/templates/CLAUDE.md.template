@@ -71,7 +71,7 @@
 
 ## 4. 안전 경계 (요약 — 자세히는 GOVERNANCE.md)
 
-- **개인 PC·비업무·비민감 데이터 전용.** 환자정보·PII·기밀 입력 금지.
+- **환자정보·PII·기밀 입력 금지.** 사용 위치·용도는 사용자 본인의 판단과 책임(GOVERNANCE.md 2·7장).
 - **bypass**: WSL 골든 이미지 배포본은 기본 ON(편의), 플러그인-만 설치 환경은 마법사 설정에 따름. **켜진 경우** 파괴/비가역 명령은 **금지목록(deny-list)** 으로 일부 자동 차단되지만(흔한 형태만·완전치 않음), 안전망은 판단을 대신하지 않는다.
 - **메모리 외부송신(egress)** 은 bypass 와 **별개 동의**다 — 기본 OFF(첫 실행 "동의 한 화면"). 끄면 메모리 시스템은 로컬에서 정상 동작한다.
 - **원격조종(Remote Control)**: 이미지 배포본은 기본 ON(`remoteControlAtStartup`). claude.ai Code 탭/모바일에서 이 로컬 세션을 잇는 **공식 기능**으로, **아웃바운드 HTTPS 전용·수신 포트 없음**(VPN/포트 설정 불필요). 끄기: `claude /config` → "Enable Remote Control for all sessions" → false.

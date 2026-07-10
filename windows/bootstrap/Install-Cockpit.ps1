@@ -269,7 +269,7 @@ function Show-OnboardingForm {
   $govBox.Location = New-Object System.Drawing.Point(12, 48)
   $govBox.Size = New-Object System.Drawing.Size(576, 152)
   $govText = New-Object System.Windows.Forms.Label
-  $govText.Text = "- 개인 PC / 비업무 / 비민감 데이터 전용 - 환자정보·개인정보(PII)·기밀 입력 금지`n" +
+  $govText.Text = "- 환자정보·개인정보(PII)·기밀 등 민감 데이터 입력 금지 - 사용 위치·용도는 본인 판단`n" +
                   "- 권한 확인 생략(bypass)이 사전적용된 환경 - AI 가 확인 팝업 없이 명령을 실행할 수 있음`n" +
                   "- 아래 옵션 1(기억 보강)을 켜면 세션 종료 시 대화 내용이 Anthropic API 로 외부 송신됨`n" +
                   "- 끄는 법/지우는 법은 설치 후 /cockpit-setup 안내 참조 - 사용의 최종 책임은 본인에게 있음"
