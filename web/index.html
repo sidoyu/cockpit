@@ -29,13 +29,13 @@
     <div id="governance" class="quickbox">
       <h3>먼저 3가지만 알아두세요</h3>
       <ul class="boundary">
-        <li>집(개인) 컴퓨터에서, <strong>회사 자료나 환자 정보 없이</strong> 쓰는 개인 학습용 도구입니다(회사 공식 프로그램이 아닙니다).</li>
+        <li>동료가 자기 설정을 나눠주는 <strong>개인 도구</strong>입니다(회사 공식 프로그램이 아닙니다). <strong>환자 정보 등 민감한 자료</strong>는 넣지 마세요.</li>
         <li>AI가 하나하나 묻지 않고 <strong>스스로 알아서 진행</strong>합니다. 위험한 명령을 막아주는 장치가 있지만 완벽하지는 않습니다.</li>
         <li><strong>본인 Claude 계정</strong>으로 로그인해서 씁니다. 입력한 내용은 답을 만들기 위해 Anthropic(Claude 만든 회사)으로 전송됩니다.</li>
       </ul>
       <label class="consent">
         <input type="checkbox" id="consent-check">
-        <span>읽었습니다. <strong>개인 PC에서 비업무 용도로만</strong> 쓰겠습니다.</span>
+        <span>읽었습니다. <strong>민감한 정보는 넣지 않고, 제 책임 아래</strong> 쓰겠습니다.</span>
       </label>
       <p class="consent-hint" id="consent-hint">체크하면 아래 다운로드 버튼이 활성화됩니다.</p>
       <p class="muted" style="margin:.4em 0 0">자세한 경계는 아래 <a href="#full-governance">사용 경계 전문</a>에 있습니다.</p>
@@ -134,7 +134,7 @@ bash plugin/dashboard/disable-remote.sh --apply</code></pre></div>
         <li><strong>권한 확인 생략(bypass) = 켜짐.</strong> Claude가 명령 실행 전 일일이 묻지 않고 진행합니다(대표적 파괴/비가역 명령은 금지목록으로 차단하지만 <strong>완전한 보호는 아닙니다</strong>).</li>
         <li><strong>외부 송출.</strong> 입력 내용이 모델 응답을 위해 Anthropic에 전송되고, 일부 기능(메모리 자동 추출·선택적 대시보드 요약)은 추가 외부 송신을 수반할 수 있습니다.</li>
         <li><strong>원격 대시보드 = 기본 꺼짐(opt-in).</strong> 켜면 개인 VPN 안의 다른 기기에서 호스트를 조종할 수 있습니다(가장 위험).</li>
-        <li><strong>개인 PC에서, 비업무·비민감 데이터로만.</strong> 환자정보·개인정보(PII)·기밀을 절대 입력하지 마세요.</li>
+        <li><strong>민감 데이터 금지.</strong> 환자정보·개인정보(PII)·기밀을 절대 입력하지 마세요. 어디서 어떤 용도로 쓸지는 본인이 판단하고 책임집니다.</li>
         <li><strong>안전장치는 보조일 뿐</strong>이며 최종 책임은 사용자에게 있습니다. 회사 보안정책과 충돌하면 회사 정책이 우선합니다.</li>
       </ul>
       <p class="band-actions">
@@ -225,7 +225,7 @@ bash plugin/dashboard/disable-remote.sh --apply</code></pre></div>
 
 <footer class="site-footer">
   <div class="wrap">
-    <p>cc-companion · cockpit <span id="ver">v0.1.12</span> · 개인 학습용 도구(회사 공식 IT 배포물 아님).</p>
+    <p>cc-companion · cockpit <span id="ver">v0.1.12</span> · 개인 도구(회사 공식 IT 배포물 아님).</p>
     <p class="links">
       <a href="https://github.com/sidoyu/cockpit/blob/main/GOVERNANCE.md">거버넌스</a> ·
       <a href="https://github.com/sidoyu/cockpit/blob/main/README.md">패키지 README</a> ·
