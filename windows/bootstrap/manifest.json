@@ -1,20 +1,20 @@
 {
   "_comment": "릴리스 매니페스트(생성본). golden-build 산출에서 채움. 런타임 신뢰는 '부트스트랩에 박힌 이미지 핀'이고 이 파일은 게시·감사용 단일 출처. 이 빌드는 미서명(체크섬 대조).",
   "schema": "cc-companion/win-release/1",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "distro_name": "cc-cockpit",
   "artifacts": {
     "image": {
       "file": "cockpit-wsl.tar.gz",
-      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.13/cockpit-wsl.tar.gz",
-      "sha256": "2518e938199e5d73d31eee998af1251de5246faecb27f6b8d9ab38225cfa7742",
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.14/cockpit-wsl.tar.gz",
+      "sha256": "667d10089b2536d0db13892400b1be336a906c2b3502c73fa278d3c681d3b413",
       "format": "tar.gz",
-      "size_bytes": 437342107
+      "size_bytes": 437354532
     },
     "bootstrap": {
       "file": "Install-Cockpit.ps1",
-      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.13/Install-Cockpit.ps1",
-      "sha256": "3dc0f14790359bebbcc82a26d8bc8d2252d6d74d5663e50f1317a7ef7b0e86c4",
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.14/Install-Cockpit.ps1",
+      "sha256": "3dcd39be103e6bbcb9494f13caa0cceac1d34677d5138d13fd14cda61ba6fed7",
       "authenticode": {
         "signed": false,
         "unsigned_acknowledged": true,
@@ -24,20 +24,20 @@
     },
     "staged_bootstrap": {
       "file": "Install-Cockpit-Staged.ps1",
-      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.13/Install-Cockpit-Staged.ps1",
-      "sha256": "d78a40b74a8b44d6a9f2609d1b777dbb6aebc93bb5faba28ada75c3e53f12363"
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.14/Install-Cockpit-Staged.ps1",
+      "sha256": "d88218bbf148f3c060630fe87e732a43261501ab60fc86652c7fb6bcdd3905c5"
     },
     "dashboard_cmd": {
       "file": "Cockpit-Dashboard.cmd",
-      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.13/Cockpit-Dashboard.cmd",
+      "url": "https://github.com/sidoyu/cockpit/releases/download/v0.1.14/Cockpit-Dashboard.cmd",
       "sha256": "052176622c5ff9b6dac766da9658530afdc9134b7f5a7ff321cfab3be99b9b39",
       "_note": "repo 파일 그대로 자산 업로드(해시=repo 실계산). v0.1.9 에서 Cockpit-Dashboard.cmd 변경(#17: 미설치 시 재시도 안내·opt-in 문구 제거) → 해시 재핀(구 v0.1.5~8 자산과 상이). Install-Cockpit.ps1 §10b 가 이 자산을 핀 해시로 받아 바탕화면 'Cockpit Dashboard' 아이콘을 만든다."
     }
   },
   "provenance": {
     "base_image": "ubuntu:24.04@sha256:52df9b1ee71626e0088f7d400d5c6b5f7bb916f8f0c82b474289a4ece6cf3faf",
-    "private_source_commit": "9ac0e6d",
-    "public_marketplace_commit": "c514f2d1d60956abc1071a303b98c0835d001d61",
+    "private_source_commit": "ab89068",
+    "public_marketplace_commit": "93688962f5a3e7a403370852311a0ac764088469",
     "plugin_preinstall_baked": true,
     "claude_code_pin": "2.1.201",
     "sbom": "cockpit-wsl.sbom.spdx.json",
