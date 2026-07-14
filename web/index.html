@@ -56,6 +56,7 @@
       <li><strong>위 버튼을 눌러 파일을 받습니다.</strong></li>
       <li><strong>받은 파일을 두 번 누릅니다(더블클릭).</strong> 검은 창이 열리고 알아서 설치됩니다(인터넷이 필요하고 몇 분 걸립니다). 검은 창은 원래 그렇게 생긴 것이니 놀라지 마세요.
         <span class="substep">“Windows의 PC 보호” 같은 파란 경고가 뜨면 <strong>[추가 정보]</strong>를 누른 뒤 <strong>[실행]</strong>을 누르세요. 경고 없이 바로 되는 컴퓨터도 있는데 둘 다 정상입니다.</span>
+        <span class="substep">컴퓨터에 WSL(윈도우 안의 리눅스 기능)이 없으면 설치기가 <strong>자동으로 준비합니다</strong> — 파란 확인 창이 뜨면 <strong>[예]</strong>를 누르세요. “다시 시작해야 마무리됩니다” 안내가 나오면 재부팅만 하면 됩니다 — <strong>로그인하면 설치 창이 저절로 다시 열려 이어서 진행됩니다</strong>(혹시 안 열리면 같은 설치 파일을 한 번 더 두 번 누르세요).</span>
         <span class="substep">설치가 거의 끝나면 작은 설정 창이 한 번 뜹니다. 맨 위 <strong>동의 칸에만 체크</strong>하세요. 나머지 칸은 잘 모르면 <strong>[건너뛰기]</strong>를 눌러도 됩니다(나중에 <code>/cockpit-setup</code>이 다시 물어봅니다). 예전 버전을 깔았던 컴퓨터라면 예전 기억을 되살릴지 여기서 물어봅니다.</span></li>
       <li><strong>설치가 끝나면 바탕화면의 “Claude (cockpit)” 아이콘을 두 번 누릅니다.</strong> 아이콘이 두 개 생기는데, 다른 하나는 나중에 쓰는 거라 지금은 신경 쓰지 않아도 됩니다.</li>
       <li><strong>검은 창이 열리면 <code>/login</code> 이라고 그대로 치고 Enter를 누릅니다.</strong> 인터넷 창이 열리면 본인 Claude 계정으로 로그인하세요. 맨 처음 한 번만 하면 됩니다.</li>
@@ -84,10 +85,10 @@
     <details class="fold" id="troubleshoot">
       <summary>문제가 생겼을 때</summary>
       <ul class="boundary">
-        <li><strong>창에 “WSL 준비가 필요합니다” 안내가 나오면</strong> 이 컴퓨터에 한 가지 준비가 더 필요한 경우입니다(조금 어려울 수 있어요). 시작 메뉴에서 “PowerShell”을 찾아 <strong>마우스 오른쪽 버튼 → 관리자 권한으로 실행</strong>하고, <strong>창에 나온 명령만 그대로 입력</strong>한 뒤(다른 명령을 인터넷에서 찾아 넣지 마세요) 끝나면 설치 파일을 다시 두 번 누르세요. 헷갈리면 이 단계는 배포자에게 도움을 청하셔도 됩니다.</li>
+        <li><strong>“WSL을 자동으로 준비합니다” 안내가 나오면</strong> 그대로 두면 됩니다 — 파란 확인 창(사용자 계정 컨트롤)이 뜨면 <strong>[예]</strong>를 누르세요. “다시 시작해야 마무리됩니다”가 나오면 재부팅만 하면 되고, <strong>로그인하면 설치 창이 저절로 다시 열려 이어집니다</strong>(안 열리면 설치 파일을 한 번 더 두 번 누르세요). 명령어를 직접 입력할 일은 없습니다.</li>
         <li><strong>빨간 글씨로 “배포판 'cc-cockpit' 이 이미 등록되어 있습니다”가 나오면</strong> 이미 깔려 있는 컴퓨터라 안전장치가 막은 것입니다(기존 것은 그대로 무사합니다). 정말 처음부터 다시 깔고 싶을 때만 아래 <a href="#downloads">복구·재설치(<code>Cockpit-Repair.cmd</code>)</a>를 쓰세요. 이때 <strong>안에 쌓인 기억과 설정은 지워집니다</strong>(다시 한 번 확인을 거칩니다).</li>
-        <li><strong>설치 중 멈추거나 실패하면</strong> 창이 바로 닫히지 않고 이유를 보여줍니다. 대부분 인터넷 연결 문제이니 한 번 더 해보고, 그래도 안 되면 <strong>그 화면을 사진으로 찍어</strong> 배포자에게 보내주세요.</li>
-        <li><strong>완전히 지우고 싶으면</strong> 아래 <a href="#downloads"><code>Cockpit-Uninstall.cmd</code></a>를 두 번 누르세요(cc-cockpit만 지우고 다른 것은 건드리지 않습니다).</li>
+        <li><strong>설치 중 멈추거나 실패하면</strong> 창이 바로 닫히지 않고 이유를 보여줍니다. <strong>아무 키도 누르기 전에 그 화면을 사진으로 찍어</strong> 배포자에게 보내주세요(키를 누르면 창이 닫힙니다). 설치가 시작된 뒤의 실패라면 기록이 <code>%TEMP%\cockpit-install.log</code> 파일에도 남습니다. 대부분 인터넷 연결 문제라 한 번 더 시도하면 되는 경우가 많습니다.</li>
+        <li><strong>완전히 지우고 싶으면</strong> 아래 <a href="#downloads"><code>Cockpit-Uninstall.cmd</code></a>를 두 번 누르세요(cc-cockpit만 지우고 다른 것은 건드리지 않습니다). 설치 때 준비된 윈도우의 WSL 기능 자체는 남습니다 — 다른 프로그램도 쓸 수 있는 윈도우 구성요소라 지우지 않습니다.</li>
       </ul>
       <h3>점검·긴급 정지</h3>
       <div class="cards">

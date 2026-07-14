@@ -127,5 +127,7 @@ exit /b 1
 :runfail
 echo(
 echo [cockpit] Reinstall exited with an error (code %RC%). See messages above.
+echo [cockpit] Please take a photo of this window and send it to the distributor.
+echo [cockpit] Install log (Korean): %TEMP%\cockpit-install.log
 pause
 exit /b %RC%

@@ -15,7 +15,7 @@
 | **`irm … \| iex` 미사용** | '받자마자 실행'은 비개발자에게 가장 위험. **다운로드 → SHA-256 체크섬 검증 → 명시적 실행** 순서(이 배포본은 코드서명 없음 — 무결성은 체크섬 대조). |
 | **이미지 해시를 부트스트랩에 핀 고정** | 서버에서 해시를 같이 받지 않는다(서버 장악 시 둘 다 바뀜). 신뢰는 *스크립트에 박힌 해시*. 핀이 플레이스홀더면 **실행 거부**(가짜 검증 방지). |
 | **게시 포맷 = `.tar.gz`** | WSL `--import` 가 네이티브로 풀고, Windows 측에 별도 `zstd` 바이너리가 필요 없다(.NET GZipStream 폴백 내장). 비개발자 경로의 신뢰 바이너리 수 = 0. |
-| **자가 권한상승 안 함** | WSL 미설치 시 사용자가 직접 실행할 관리자 명령만 안내하고 종료. 관찰 가능·되돌림 가능. |
+| **자가 권한상승 최소화** | 설치기 자신은 비승격 실행. WSL 미설치 시 `wsl --install --no-distribution` **한 명령만** UAC 로 사용자가 직접 승인해 승격(거부하면 중단·무인 실행은 안내 후 종료). 승격 대상은 System32 절대경로로 고정(경로 하이재킹 방지). |
 | **골든 이미지 = CI 빌드(수동 tar 금지)** | 핀 고정 베이스에서 `provision.sh` 를 돌려 export → 출처·재현성 확보(`provenance.json`). |
 | **스테이지드 폴백 제공** | 골든 이미지 다운로드 실패/불신/구형 환경용. 공식 베이스 rootfs 를 검증해 import 후 라이브 프로비저닝. |
 
@@ -35,7 +35,7 @@ windows/
     Cockpit-Install.cmd             원클릭 설치 브리지(ps1 다운로드+핀해시 검증+실행)
     Cockpit-Dashboard.cmd           로컬 대시보드 켜기(옵트인·창 닫으면 꺼짐)
     Cockpit-Repair.cmd              원클릭 재설치/복구·이미지 업데이트(-Reinstall·데이터 소실 경고, G17)
-    Cockpit-Uninstall.cmd           원클릭 완전 제거(cc-cockpit 만 unregister·이름 재입력 확인, G17)
+    Cockpit-Uninstall.cmd           원클릭 완전 제거(cc-cockpit 만 unregister·자동 백업+Y/N 확인, G17)
     manifest.example.json           릴리스 매니페스트 스키마(게시·감사 단일 출처, 플레이스홀더)
   staged/
     Install-Cockpit-Staged.ps1      폴백(골든 이미지 없이 베이스에서 라이브 프로비저닝)
@@ -75,12 +75,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-Cockpit-Staged.ps1
 ```
 공식 베이스 rootfs(예: Canonical Ubuntu WSL)를 받아 **체크섬 검증** 후 import, 그 안에서 `provision.sh` 실행.
 
-### 사전 준비(사용자 수동 — 자동화 불가)
-- WSL2 사용 가능 상태. 미설치 시 부트스트랩이 안내하는 명령을 **관리자 PowerShell** 에서 직접 실행:
+### 사전 준비(WSL)
+- **골든 경로(Cockpit-Install.cmd)는 WSL 미설치 시 자동으로 준비한다**(UAC [예] 1회 → 재부팅 필요 시 HKCU RunOnce 로 **로그인 후 자동 이어하기**, 미발화 시 재더블클릭 폴백 · Win10 은 빌드 19041+ 에서만 자동 준비). 수동으로 하려면 관리자 PowerShell:
   ```powershell
   wsl --install --no-distribution   # 후 재부팅
   wsl --update                      # 최신 store 버전 권장(--import 안정성)
   ```
+- 스테이지드 폴백은 자동 준비를 하지 않는다(고급 사용자 전제 — 위 수동 명령 사용).
 
 ---
 
@@ -90,12 +91,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-Cockpit-Staged.ps1
 - **이 배포판 통째 삭제**: `wsl --unregister cc-cockpit` — 다른 배포판은 그대로.
 
 ## 복구 · 업데이트 · 제거 (원터치 .cmd, G17)
-설치 후 문제가 생기거나 정리가 필요할 때, 비개발자용 **더블클릭 .cmd**로 처리한다(모두 ASCII 영문 메시지·이름 재입력 확인·**cc-cockpit 만** 대상):
+설치 후 문제가 생기거나 정리가 필요할 때, 비개발자용 **더블클릭 .cmd**로 처리한다(모두 ASCII 영문 메시지·삭제 전 확인 절차·**cc-cockpit 만** 대상):
 
 | 상황 | 파일 | 하는 일 |
 |------|------|---------|
 | 무언가 깨짐 / 새 이미지로 갱신 | `Cockpit-Repair.cmd` | ps1 다운로드+핀검증 후 `-Reinstall` — 배포판을 **새로 재설치**. ⚠️ **기존 배포판 안의 기억·설정·로그는 모두 사라진다**(재설치=신규 import). **재설치 전 백업**: claude 안 WSL 에서 `python3 <플러그인>/hooks/memory/backup.py` (위치=`CC_BACKUP_DIR`, 재설치 생존 위해 `/mnt/c/...` 권장). ps1 이 배포판 이름을 재입력받아 이중 확인. |
-| 완전 삭제 | `Cockpit-Uninstall.cmd` | `wsl --unregister cc-cockpit` 래퍼 — 배포판 이름 재입력 확인 후 종료·등록 해제·설치 폴더 정리(**기본 경로 `%LOCALAPPDATA%\cc-cockpit` 만**; 커스텀 InstallPath 로 설치했으면 그 폴더는 수동 삭제, 정리 실패 시 경고 출력). 다른 배포판은 안 건드림. |
+| 완전 삭제 | `Cockpit-Uninstall.cmd` | `wsl --unregister cc-cockpit` 래퍼 — 자동 백업 후 Y/N 확인(백업 실패 시 이름 재입력)으로 종료·등록 해제·설치 폴더 정리(**기본 경로 `%LOCALAPPDATA%\cc-cockpit` 만**; 커스텀 InstallPath 로 설치했으면 그 폴더는 수동 삭제, 정리 실패 시 경고 출력). 다른 배포판은 안 건드림. |
 | **행동층(플러그인) 갱신** | *(별도 .cmd 없음)* | 플러그인 업데이트는 **claude 안에서** `/plugin`(마켓플레이스 업데이트)로 하는 **비파괴** 경로다 — 기억·설정 유지. 배포판 재설치(위)와 달리 데이터 소실 없음. **일상 업데이트는 이 경로**, 이미지 재설치는 드문 breaking 시에만. |
 
 > **주의**: 재설치/이미지 업데이트는 배포판 내부 데이터를 지운다. **백업**은 `hooks/memory/backup.py`(기억·상태·설정 tar.gz, `CC_BACKUP_DIR`; WSL 은 재설치 생존 위해 `/mnt/c/...` 권장)로 제공한다 — **재설치 전 실행 권장**. ⚠️ **백업 tar 엔 기억·설정 등 민감정보가 담긴다**(chmod 600 적용) — 공유 폴더·공용 PC 유출 주의, 본인 Windows 사용자 폴더 보관. 백업→재설치→**자동 복원** 통합(기억 보존형 이미지 업데이트)은 후속 설계이며, 그 전까지는 재설치 후 백업 tar 를 수동으로 풀어 복원한다.

@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-marketplace-v1.schema.json",
   "name": "cc-companion",
   "description": "단일 사령탑 Claude Code 운영 환경 패키지 (행동 규율·메모리 시스템·안전망).",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "owner": {
     "name": "sidoyu"
   },

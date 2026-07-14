@@ -66,9 +66,10 @@ function New-CockpitLauncher {
     '@echo off',
     'title Claude (cockpit)',
     'setlocal',
-    'set "WSL=wsl.exe"',
-    'where %WSL% >nul 2>nul || set "WSL=%WINDIR%\Sysnative\wsl.exe"',
-    ('%WSL% -d ' + $Distro + ' bash -lc "' + $launch + '"'),
+    # 신뢰 경로 고정(Fable S1-2) — CWD 의 가짜 wsl.exe 방지, golden 런처와 동일 패턴.
+    'set "WSL=%WINDIR%\System32\wsl.exe"',
+    'if not exist "%WSL%" set "WSL=%WINDIR%\Sysnative\wsl.exe"',
+    ('"%WSL%" -d ' + $Distro + ' bash -lc "' + $launch + '"'),
     'if %errorlevel% neq 0 (',
     '  echo(',
     '  echo [cockpit] Launch failed - check WSL/distro state:  wsl -l -v',
@@ -160,25 +161,44 @@ if ($BaseSha256) {
 # ── 2) 사전 점검: Windows / WSL ───────────────────────────────────────────
 $build = [int][Environment]::OSVersion.Version.Build
 if ($build -lt 18362) { Die "Windows 10 1903(빌드 18362) 이상 필요(현재 $build)." }
-$wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
-if (-not $wsl) {
-  Warn "WSL 미설치 — 관리자 PowerShell 에서 직접 실행 후 재부팅하고 재시도:"
-  Write-Host "    wsl --install --no-distribution" -ForegroundColor Cyan
-  Die "WSL 미설치 — 자가 권한상승 안 함."
+# wsl.exe 는 미설치 PC에도 스텁으로 존재(존재≠설치, v0.1.13 실사용 실측). 응답+서비스로 판별하고,
+# 네이티브 stderr 리다이렉트의 EAP=Stop NativeCommandError 지뢰(같은 사고)는 Invoke-Wsl 로만 회피.
+$env:WSL_UTF8 = '1'   # wsl.exe 메시지 UTF-16 미스디코드 방지(미지원 구버전은 무시)
+# 신뢰 경로 고정(Codex P0) — CWD/PATH 의 가짜 wsl.exe 방지. 32비트 호스트는 Sysnative 로.
+$sysDir = Join-Path $env:WINDIR 'System32'
+if (-not [Environment]::Is64BitProcess -and [Environment]::Is64BitOperatingSystem) { $sysDir = Join-Path $env:WINDIR 'Sysnative' }
+$WslExe = Join-Path $sysDir 'wsl.exe'
+function Invoke-Wsl([string[]]$WslArgs) {
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try {
+    $raw = & $WslExe @WslArgs 2>&1
+    $code = $LASTEXITCODE
+    return @{ ok = ($code -eq 0); code = $code
+              out = @($raw | ForEach-Object { "$_" -replace "`0",'' } | Where-Object { $_.Trim() -ne '' }) }
+  } catch { return @{ ok = $false; code = -1; out = @("$($_.Exception.Message)") } }
+  finally { $ErrorActionPreference = $prev }
+}
+if (-not (Invoke-Wsl @('--status')).ok) {
+  # 인박스(구) WSL 은 --status 를 모른다 — 서비스(LxssManager=인박스·WslService=스토어)로 구분.
+  if (-not (Get-Service -Name 'WslService','LxssManager' -ErrorAction SilentlyContinue)) {
+    Warn "WSL 미설치 — 관리자 PowerShell 에서 직접 실행 후 재부팅하고 재시도:"
+    Write-Host "    wsl --install --no-distribution" -ForegroundColor Cyan
+    Die "WSL 미설치 — 자가 권한상승 안 함. (원클릭 설치기 Cockpit-Install.cmd 는 이 준비를 자동으로 해줍니다)"
+  }
+  Warn "구(인박스) WSL 로 보입니다 — --import 는 동작하나 최신 store 버전 권장: wsl --update"
 }
 
 # ── 3) 배포판 충돌 가드 ───────────────────────────────────────────────────
-$existing = @()
-$raw = (& wsl.exe -l -q) 2>$null
-if ($LASTEXITCODE -ne 0) { Warn "wsl -l -q 조회 실패(코드 $LASTEXITCODE) — 기존 배포판 목록 신뢰 불가." }
-$existing = $raw | ForEach-Object { ($_ -replace "`0","").Trim() } | Where-Object { $_ -ne '' }
+$listing = Invoke-Wsl @('-l','-q')
+if (-not $listing.ok) { Warn "기존 배포판 목록 확인 불가(코드 $($listing.code)) — 새 WSL(배포판 0개)이면 정상." }
+$existing = $listing.out | ForEach-Object { $_.Trim() }
 if ($existing -contains $DistroName) {
   if (-not $Reinstall) { Die "배포판 '$DistroName' 이미 존재. 재설치는 -Reinstall." }
   Warn "재설치 — '$DistroName' unregister(데이터 삭제)."
   $ans = Read-Host "확인을 위해 배포판 이름 '$DistroName' 입력"
   if ($ans -ne $DistroName) { Die "확인 불일치 — 중단." }
-  & wsl.exe --terminate $DistroName 2>$null | Out-Null
-  & wsl.exe --unregister $DistroName
+  Invoke-Wsl @('--terminate', $DistroName) | Out-Null
+  & $WslExe --unregister $DistroName
   if ($LASTEXITCODE -ne 0) { Die "unregister 실패(코드 $LASTEXITCODE) — 중단." }
 }
 
@@ -187,7 +207,7 @@ if (-not $InstallPath) { $InstallPath = Join-Path $env:LOCALAPPDATA $DistroName 
 if (-not (Test-Path $InstallPath)) { New-Item -ItemType Directory -Path $InstallPath -Force | Out-Null }
 
 Info "베이스 import: $DistroName ← $BaseRootfs"
-& wsl.exe --import $DistroName $InstallPath $BaseRootfs --version 2
+& $WslExe --import $DistroName $InstallPath $BaseRootfs --version 2
 if ($LASTEXITCODE -ne 0) { Die "wsl --import 실패(코드 $LASTEXITCODE). wsl --update 후 재시도." }
 
 # ── 5) provision.sh + wsl.conf 를 배포판으로 전달(base64 — 인코딩 안전·추가 도구 불필요) ─
@@ -199,7 +219,7 @@ function Get-LfBytes([string]$path) {
 }
 function Put-ToWsl([byte[]]$bytes, [string]$wslPath) {
   $b64 = [Convert]::ToBase64String($bytes)
-  $b64 | & wsl.exe -d $DistroName -u root -- bash -c "base64 -d > '$wslPath'"
+  $b64 | & $WslExe -d $DistroName -u root -- bash -c "base64 -d > '$wslPath'"
   if ($LASTEXITCODE -ne 0) { Die "WSL 파일 쓰기 실패: $wslPath" }
 }
 
@@ -212,11 +232,11 @@ if (Test-Path $WslConf) {
 }
 
 Info "provision.sh 실행(배포판 내부, root)"
-& wsl.exe -d $DistroName -u root -- env COCKPIT_USER=cockpit COCKPIT_INSTALL_CC=1 bash /root/provision.sh
+& $WslExe -d $DistroName -u root -- env COCKPIT_USER=cockpit COCKPIT_INSTALL_CC=1 bash /root/provision.sh
 if ($LASTEXITCODE -ne 0) { Die "provision 실패(코드 $LASTEXITCODE). 배포판 로그 확인." }
 
 # wsl.conf 의 기본 사용자 변경을 반영하려면 배포판 재시작.
-& wsl.exe --terminate $DistroName 2>$null | Out-Null
+Invoke-Wsl @('--terminate', $DistroName) | Out-Null
 
 Info "스테이지드 설치 완료 ✓  (편의 설정 사전적용)"
 

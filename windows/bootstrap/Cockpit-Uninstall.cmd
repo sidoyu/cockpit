@@ -21,6 +21,15 @@ if not exist "%WSL%" (
   exit /b 1
 )
 
+rem ---- STEP 0: remove reboot auto-resume leftovers FIRST (best-effort, silent).
+rem      Must run before any distro checks: on a half-installed PC (WSL reboot
+rem      pending, no distro yet) the backup/unregister steps below fail and never
+rem      reach later cleanup - the pending RunOnce would then "reinstall" cockpit
+rem      at next logon right after the user chose to remove it (Codex 4, v0.1.14).
+"%SYS32%\reg.exe" delete "HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce" /v CockpitInstallResume /f >nul 2>nul
+if exist "%LAUNCHDIR%\Cockpit-Install-Resume.cmd" del /q "%LAUNCHDIR%\Cockpit-Install-Resume.cmd" 2>nul
+if exist "%LAUNCHDIR%\Resume-After-Reboot.cmd" del /q "%LAUNCHDIR%\Resume-After-Reboot.cmd" 2>nul
+
 echo(
 echo   ============================================================
 echo    Cockpit Uninstall
@@ -88,6 +97,10 @@ if exist "%LAUNCHDIR%" (
   echo [cockpit] Cleaning up launcher files in: %LAUNCHDIR%
   if exist "%LAUNCHDIR%\Launch-Cockpit.cmd" del /q "%LAUNCHDIR%\Launch-Cockpit.cmd" 2>nul
   if exist "%LAUNCHDIR%\Cockpit-Dashboard.cmd" del /q "%LAUNCHDIR%\Cockpit-Dashboard.cmd" 2>nul
+  rem resume path downloads the installer ps1 next to its copy - clean it too, or
+  rem the non-recursive rd below never removes the folder.
+  if exist "%LAUNCHDIR%\Install-Cockpit.ps1" del /q "%LAUNCHDIR%\Install-Cockpit.ps1" 2>nul
+  if exist "%LAUNCHDIR%\Install-Cockpit.ps1.mismatch" del /q "%LAUNCHDIR%\Install-Cockpit.ps1.mismatch" 2>nul
   if exist "%LAUNCHDIR%\DashboardProfile" rd /s /q "%LAUNCHDIR%\DashboardProfile" 2>nul
   rd "%LAUNCHDIR%" 2>nul
 )

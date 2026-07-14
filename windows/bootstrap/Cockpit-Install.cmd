@@ -22,6 +22,8 @@ set "CURL=%SYS32%\curl.exe"
 set "CERTUTIL=%SYS32%\certutil.exe"
 set "FINDSTR=%SYS32%\findstr.exe"
 set "DOWNLOADED="
+rem installer ps1 uses this to register reboot auto-resume (copy of this file).
+set "COCKPIT_SELF=%~f0"
 
 if not exist "%PSEXE%" (
   echo [cockpit] FATAL: PowerShell not found at %PSEXE%
@@ -120,5 +122,7 @@ exit /b 1
 :runfail
 echo(
 echo [cockpit] Installer exited with an error (code %RC%). See messages above.
+echo [cockpit] Please take a photo of this window and send it to the distributor.
+echo [cockpit] Install log (Korean): %TEMP%\cockpit-install.log
 pause
 exit /b %RC%

@@ -9,7 +9,9 @@
       플레이스홀더이거나 사용자가 URL/해시를 오버라이드하면 = 핀-미사용 모드 → -AllowUnpinnedImage 명시 필요(가짜검증 방지).
     • **별도 배포판**(기본 cc-cockpit, 이름은 'cc-' 접두 강제). 기존 Ubuntu 등 다른 WSL 배포판을 건드리지 않는다.
       임의 이름은 -AllowCustomDistroName 고위험 플래그로만 허용.
-    • 관리자 권한을 스스로 올리지 않는다. WSL 미설치 시 사용자가 직접 실행할 명령만 안내하고 종료.
+    • 설치기 자신은 비승격 실행. WSL 미설치 시 'wsl --install --no-distribution' **한 명령만** 사용자가
+      UAC 로 직접 승인해 승격 실행(거부 시 중단·무인 실행은 안내만). 재부팅 필요 시 HKCU RunOnce 1회성
+      자동 이어하기 등록(로그인 후 저절로 재개·실패해도 수동 재더블클릭 폴백).
     • 편의 설정(bypass·effort·model·원격조종·trust)은 이미지에 사전적용 출고. **외부 송신(egress) 동의**는
       OFF — 첫 실행 /cockpit-setup 동의 한 화면 또는 설치 폼에서만 켜진다.
     • 세션 대시보드 뷰어는 기본 부속으로 자동 설치(설치≠기동 — 자동시작·포트 개방 없음, 켜기는 아이콘).
@@ -56,6 +58,17 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# ── 설치 기록(트랜스크립트) — 사용자가 키를 눌러 창을 닫아도 원인이 남게(v0.1.13 실사용 사고).
+#    한계: PS 트랜스크립트는 네이티브 exe 의 콘솔 직행 출력(curl 진행률 등)은 못 담지만,
+#    Info/Warn/Die 와 PowerShell 오류(NativeCommandError 포함)는 담긴다 — 사후 진단엔 충분.
+#    API 키는 GUI 폼 → wsl 표준입력 경유(콘솔 비경유)라 트랜스크립트에 포착되지 않는다(§9.5 불변식 유지).
+$LogPath = Join-Path $env:TEMP 'cockpit-install.log'
+$script:TranscriptOn = $false
+try {
+  Start-Transcript -Path $LogPath -Append -ErrorAction Stop | Out-Null   # -Append: 재부팅 재실행이 최초 사고 기록을 덮지 않게. Stop: 실패가 조용히 삼켜지면 플래그가 거짓 양성(Codex 6).
+  $script:TranscriptOn = $true
+} catch {}
+
 # ── 게시 시 치환되는 핀 고정값(빌드/릴리스 파이프라인이 채움) ──────────────
 $PinnedImageUrl = 'https://github.com/sidoyu/cockpit/releases/download/v0.1.13/cockpit-wsl.tar.gz'
 $PinnedSha256   = '2518e938199e5d73d31eee998af1251de5246faecb27f6b8d9ab38225cfa7742'   # cockpit-wsl.tar.gz SHA-256 (golden-build 산출).
@@ -66,7 +79,22 @@ $PLACEHOLDER_HOSTS = @('example.invalid')
 
 function Info($m){ Write-Host "[cockpit] $m" }
 function Warn($m){ Write-Host "[cockpit][warn] $m" -ForegroundColor Yellow }
-function Die ($m){ Write-Host "[cockpit][FATAL] $m" -ForegroundColor Red; exit 1 }
+function Die ($m){
+  Write-Host "[cockpit][FATAL] $m" -ForegroundColor Red
+  if ($script:TranscriptOn) {
+    Write-Host "[cockpit] 막히면 아무 키를 누르기 전에 이 화면을 사진 찍어 배포자에게 보내주세요. 설치 기록: $LogPath" -ForegroundColor Yellow
+  } else {
+    Write-Host "[cockpit] 막히면 아무 키를 누르기 전에 이 화면을 사진 찍어 배포자에게 보내주세요." -ForegroundColor Yellow
+  }
+  try { Stop-Transcript | Out-Null } catch {}
+  exit 1
+}
+
+# 회사 정책(AppLocker/WDAC)의 PowerShell 제한 모드에서는 WinForms·프로브가 조용히 이상동작한다 —
+# ExecutionPolicy Bypass 로도 우회되지 않으므로 초장에 정직하게 중단(Codex 5, 2026-07-14).
+if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
+  Die "이 PC 의 PowerShell 이 제한 모드(회사 보안 정책)로 잠겨 있어 설치할 수 없습니다. 회사 관리 PC 로 보이니 IT 관리자와 상의하세요."
+}
 
 Info "cockpit WSL2 부트스트랩 시작 (배포판: $DistroName)"
 
@@ -117,32 +145,155 @@ if (-not $usingLocal) {
   }
 }
 
-# ── 3) 사전 점검: Windows 버전 + WSL2 ─────────────────────────────────────
+# ── 3) 사전 점검: Windows 버전 + WSL2 (없으면 자동 준비) ──────────────────
 Info "사전 점검: Windows / WSL2"
 $build = [int][Environment]::OSVersion.Version.Build
 if ($build -lt 18362) {
   Die "Windows 10 1903(빌드 18362) 이상이 필요합니다(현재 빌드 $build). WSL2 미지원."
 }
-$wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
-if (-not $wsl) {
-  Warn "WSL 이 설치되어 있지 않습니다. 관리자 PowerShell 에서 아래를 직접 실행한 뒤 재부팅하고 이 스크립트를 다시 실행하세요:"
-  Write-Host "    wsl --install --no-distribution" -ForegroundColor Cyan
-  Die "WSL 미설치 — 스스로 권한을 올리지 않습니다(안전). 위 명령을 직접 실행하세요."
+
+# wsl.exe 는 WSL 미설치 PC에도 스텁(stub)으로 존재한다(v0.1.13 실사용 실측 2026-07-14) —
+# '파일 존재'가 아니라 '실제 응답(--status 종료코드)'으로 판별한다.
+# 네이티브 명령의 stderr 리다이렉트(2>$null·2>&1)는 EAP=Stop 에서 첫 stderr 줄에
+# NativeCommandError 로 즉사하므로(같은 사고), wsl.exe 프로브는 전부 Invoke-Wsl 로만 부른다.
+$env:WSL_UTF8 = '1'   # wsl.exe 자체 메시지를 UTF-8 로 — UTF-16 미스디코드(깨진 한글) 방지. 미지원 구버전은 무시.
+
+# 신뢰 경로 고정(Codex P0, 2026-07-14) — .cmd 의 System32 절대경로 원칙을 ps1 에도 적용.
+# CWD 가 다운로드 폴더인 채 bare 이름을 부르면 같은 폴더의 가짜 wsl.exe 가 이길 수 있다
+# (특히 아래 -Verb RunAs 승격 호출은 치명). 32비트 호스트에서 64비트 OS 의 진짜
+# System32 는 파일시스템 리다이렉트에 가려지므로 Sysnative 로 접근한다.
+$sysDir = Join-Path $env:WINDIR 'System32'
+if (-not [Environment]::Is64BitProcess -and [Environment]::Is64BitOperatingSystem) { $sysDir = Join-Path $env:WINDIR 'Sysnative' }
+$WslExe = Join-Path $sysDir 'wsl.exe'
+$ShutdownExe = Join-Path $sysDir 'shutdown.exe'
+
+function Invoke-Wsl([string[]]$WslArgs) {
+  # 반환: @{ ok; code; out } — stdout+stderr 합본(NUL 제거·빈 줄 제외), 어떤 경우에도 예외를 던지지 않음.
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try {
+    $raw = & $WslExe @WslArgs 2>&1
+    $code = $LASTEXITCODE   # 즉시 캡처 — 아래 파이프라인이 끼어들기 전에(Codex 6)
+    $lines = @($raw | ForEach-Object { "$_" -replace "`0",'' } | Where-Object { $_.Trim() -ne '' })
+    return @{ ok = ($code -eq 0); code = $code; out = $lines }
+  } catch {
+    return @{ ok = $false; code = -1; out = @("$($_.Exception.Message)") }
+  } finally { $ErrorActionPreference = $prev }
 }
-$wslVer = (& wsl.exe --version) 2>$null
-if (-not $wslVer) {
-  Warn "wsl --version 출력이 없음 — 인박스(구) WSL 일 수 있습니다. --import 는 동작하나 최신 store 버전 권장:"
-  Write-Host "    wsl --update" -ForegroundColor Cyan
+function Test-WslReady { (Invoke-Wsl @('--status')).ok }
+
+$wslStatus = Invoke-Wsl @('--status')
+if (-not $wslStatus.ok) {
+  Info "wsl --status 실패(코드 $($wslStatus.code)): $($wslStatus.out | Select-Object -First 1)"   # 판정 근거를 기록에 남김(Codex 6)
+  # --status 실패 = ①스텁(미설치) 또는 ②--status 를 모르는 구(인박스) WSL. 서비스 존재로 구분:
+  # 인박스 WSL=LxssManager, 스토어 WSL=WslService. 둘 다 없으면 미설치가 확실.
+  $svc = Get-Service -Name 'WslService','LxssManager' -ErrorAction SilentlyContinue
+  if ($svc) {
+    # 주의: 서비스 존재는 보조 증거일 뿐(기능 켜고 재부팅 대기 중일 수도 — Codex 3). 여기서 막지 않고
+    # 진행하되 힌트를 남긴다 — 진짜 고장이면 import 가 코드와 함께 정직하게 실패한다(fail-loud 수용).
+    Warn "WSL 이 있으나 --status 가 응답하지 않습니다 — 구(인박스) WSL 이거나, 방금 기능을 켜고 아직 재부팅을 안 한 상태일 수 있습니다."
+    Warn "이후 단계가 실패하면: 재부팅 후 이 파일을 다시 실행해 보세요. (구 WSL 이면 wsl --update 권장)"
+  } else {
+    # 미설치 → 자동 준비. 관리자 승인은 UAC 파란 창에서 사용자가 직접([예] 또는 관리자 암호) —
+    # 설치기 프로세스 자체는 여전히 권한을 올리지 않고, 승격은 wsl --install 한 개 명령에만 한정.
+    $interactive = [Environment]::UserInteractive
+    try { if ([Console]::IsInputRedirected) { $interactive = $false } } catch {}
+    if (-not $interactive) {
+      Die "WSL 미설치 — 무인 실행에서는 자동 설치를 시도하지 않습니다(UAC 불가). 관리자 PowerShell 에서 'wsl --install --no-distribution' 실행 → 재부팅 → 재실행하세요."
+    }
+    # 자동 준비(wsl --install)의 공식 전제 = Win10 2004(빌드 19041)+ (Codex P0-2).
+    # 그 미만의 스텁은 --no-distribution 을 모른 채 실패한다 — 정직하게 Windows 업데이트로 안내.
+    if ($build -lt 19041 -or -not (Test-Path $WslExe)) {
+      Die "이 Windows 버전(빌드 $build)에서는 WSL 자동 준비를 지원하지 않습니다. Windows 업데이트(버전 2004 이상)를 먼저 해 주세요."
+    }
+    Write-Host ""
+    Info "이 PC에는 WSL(윈도우 안의 리눅스 기능)이 아직 없어서, 지금 자동으로 준비합니다."
+    Info "잠시 후 파란 '사용자 계정 컨트롤' 창이 뜨면 [예] 를 누르세요(계정에 따라 관리자 암호를 물을 수 있습니다). 진행 창이 하나 열렸다 닫힙니다."
+    $rc = $null
+    try {
+      $p = Start-Process -FilePath $WslExe -ArgumentList '--install','--no-distribution' -Verb RunAs -Wait -PassThru
+      $rc = $p.ExitCode
+    } catch {
+      Die "관리자 승인이 진행되지 않아 WSL 을 준비하지 못했습니다. 설치 파일을 다시 두 번 누르고 파란 창에서 [예] 를 눌러 주세요. (관리자 암호를 모르는 회사 관리 PC 면 IT 관리자에게 문의)"
+    }
+    if (Test-WslReady) {
+      Info "WSL 준비 완료 — 재부팅 없이 이어서 진행합니다."
+    } elseif (($rc -is [int]) -and $rc -ne 0 -and $rc -ne 3010) {
+      # 3010 = ERROR_SUCCESS_REBOOT_REQUIRED 관례. $null(코드 미확보)은 재부팅 안내 쪽(재실행 시 자동 재시도 루프)이 안전.
+      Die "WSL 자동 설치가 실패했습니다(코드 $rc). 인터넷 연결을 확인한 뒤 설치 파일을 다시 두 번 눌러 주세요. (회사 네트워크의 스토어 차단, 또는 Windows 업데이트가 오래 밀린 PC 에서도 실패할 수 있습니다)"
+    } else {
+      # 재부팅 필요 → 자동 이어하기 등록(HKCU RunOnce — 로그인 시 1회 실행 후 윈도우가 자동 삭제).
+      # Codex 우려 대응: 사본=%LOCALAPPDATA%\Cockpit 안정 경로 · 로그인 직후 Wi-Fi 미연결 대비
+      # 네트워크 대기 래퍼 · 같은 사용자(HKCU) 한정 · 등록 실패는 비치명(수동 폴백 안내 유지) ·
+      # 잔재는 Cockpit-Uninstall.cmd 가 정리. 래퍼 내용은 ASCII-only(절대경로 무포함 — 한글 사용자명 안전).
+      $resumed = $false
+      try {
+        if ($env:COCKPIT_SELF -and (Test-Path $env:COCKPIT_SELF)) {
+          $ckDir = Join-Path $env:LOCALAPPDATA 'Cockpit'
+          if (-not (Test-Path $ckDir)) { New-Item -ItemType Directory -Path $ckDir -Force | Out-Null }
+          $resumeCopy = Join-Path $ckDir 'Cockpit-Install-Resume.cmd'
+          # 자동 재개로 실행된 사본이 다시 이 분기에 오면(재부팅 2회 필요 PC) 자기 자신 복사가 되므로 생략.
+          if ((Resolve-Path $env:COCKPIT_SELF).Path -ne $resumeCopy) {
+            Copy-Item $env:COCKPIT_SELF $resumeCopy -Force
+          }
+          $wrap = Join-Path $ckDir 'Resume-After-Reboot.cmd'
+          Set-Content -Path $wrap -Encoding Ascii -Value @(
+            '@echo off',
+            'title Cockpit Install (resume)',
+            'echo [cockpit] Continuing installation after restart...',
+            'echo [cockpit] Waiting for network (up to 60 seconds)...',
+            'set TRIES=0',
+            ':waitnet',
+            'set /a TRIES+=1',
+            '"%WINDIR%\System32\ping.exe" -n 1 github.com >nul 2>nul && goto :go',
+            'if %TRIES% geq 12 goto :go',
+            '"%WINDIR%\System32\ping.exe" -n 6 127.0.0.1 >nul',
+            'goto :waitnet',
+            ':go',
+            'call "%~dp0Cockpit-Install-Resume.cmd"'
+          )
+          $runOnceKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce'
+          if (-not (Test-Path $runOnceKey)) { New-Item -Path $runOnceKey -Force | Out-Null }   # 새 프로필엔 키 자체가 없을 수 있음
+          New-ItemProperty -Path $runOnceKey `
+            -Name 'CockpitInstallResume' -PropertyType String -Force `
+            -Value ('"' + (Join-Path $env:WINDIR 'System32\cmd.exe') + '" /c ""' + $wrap + '""') | Out-Null
+          $resumed = $true
+        }
+      } catch { Warn "자동 이어하기 등록에 실패했습니다($($_.Exception.Message)) — 아래 수동 안내를 따라 주세요." }
+      Write-Host ""
+      Write-Host "▶ 절반 완료: WSL 준비는 끝났고, 컴퓨터를 다시 시작해야 마무리됩니다." -ForegroundColor Green
+      if ($resumed) {
+        Write-Host "  다시 시작하고 로그인하면, 설치 창이 저절로 다시 열려 이어서 진행됩니다." -ForegroundColor Green
+        Write-Host "  (혹시 저절로 열리지 않으면: 아까 받은 설치 파일을 한 번 더 두 번 누르세요)"
+      } else {
+        Write-Host "  다시 시작한 뒤, 아까 받은 설치 파일을 한 번 더 두 번 누르세요 — 이어서 자동으로 설치됩니다." -ForegroundColor Green
+      }
+      $ans = Read-Host "지금 바로 다시 시작할까요? 예=Y 입력 후 Enter / 나중에 직접=그냥 Enter"
+      if ($ans -match '^([Yy]|예)') {
+        & $ShutdownExe /r /t 15 /c "cockpit: WSL 준비를 마치기 위해 15초 후 다시 시작합니다. (취소: shutdown /a)"
+        if ($LASTEXITCODE -ne 0) {
+          Warn "자동 다시 시작이 막혔습니다(코드 $LASTEXITCODE) — 직접 다시 시작해 주세요."
+          Read-Host "위 안내를 확인했으면 Enter 를 누르세요(창이 닫힙니다)" | Out-Null
+        } else {
+          Info "15초 후 다시 시작합니다 — 열려 있는 문서가 있으면 지금 저장하세요."
+        }
+      } elseif ($resumed) {
+        Info "알겠습니다 — 편할 때 다시 시작하세요. 로그인하면 설치가 저절로 이어집니다."
+      } else {
+        Info "알겠습니다 — 편할 때 다시 시작한 뒤, 설치 파일을 한 번 더 두 번 눌러 주세요."
+      }
+      try { Stop-Transcript | Out-Null } catch {}
+      exit 0
+    }
+  }
 }
 
 # ── 4) 배포판 이름 충돌 가드(기존 배포판 보호) ────────────────────────────
-# `wsl -l -q` 는 UTF-16 + NUL 이 섞여 나오므로 정리해서 비교. 조회 실패 시 충돌 가드 신뢰 불가 → 경고.
-$existing = @()
-$raw = (& wsl.exe -l -q) 2>$null
-if ($LASTEXITCODE -ne 0) {
-  Warn "wsl -l -q 조회 실패(코드 $LASTEXITCODE) — 기존 배포판 목록을 신뢰할 수 없습니다. import 가 충돌하면 안전하게 실패합니다."
+# `wsl -l -q` 는 UTF-16 + NUL 이 섞여 나올 수 있어 Invoke-Wsl 이 정리. 조회 실패 시 충돌 가드 신뢰 불가 → 경고.
+$listing = Invoke-Wsl @('-l','-q')
+if (-not $listing.ok) {
+  Warn "기존 배포판 목록을 확인할 수 없습니다(코드 $($listing.code)) — 방금 WSL 을 준비한 새 PC(배포판 0개)면 정상입니다. import 가 충돌하면 안전하게 실패합니다."
 }
-$existing = $raw | ForEach-Object { ($_ -replace "`0","").Trim() } | Where-Object { $_ -ne '' }
+$existing = $listing.out | ForEach-Object { $_.Trim() }
 
 if ($existing -contains $DistroName) {
   if (-not $Reinstall) {
@@ -151,8 +302,8 @@ if ($existing -contains $DistroName) {
   Warn "재설치 요청 — '$DistroName' 을 unregister 합니다. 이 배포판 안의 데이터는 모두 삭제됩니다."
   $ans = Read-Host "정말 진행하려면 배포판 이름 '$DistroName' 을 그대로 입력하세요"
   if ($ans -ne $DistroName) { Die "확인 불일치 — 중단(아무것도 변경하지 않음)." }
-  & wsl.exe --terminate $DistroName 2>$null | Out-Null
-  & wsl.exe --unregister $DistroName
+  Invoke-Wsl @('--terminate', $DistroName) | Out-Null
+  & $WslExe --unregister $DistroName
   if ($LASTEXITCODE -ne 0) { Die "unregister 실패(코드 $LASTEXITCODE) — 중단." }
   Info "기존 '$DistroName' 제거 완료. (다른 배포판은 건드리지 않았습니다.)"
 }
@@ -185,8 +336,22 @@ try {
     Copy-Item $ImageFile $gz -Force
   } else {
     Info "이미지 다운로드: $ImageUrl"
-    try { Invoke-WebRequest -Uri $ImageUrl -OutFile $gz -UseBasicParsing }
-    catch { Die "다운로드 실패: $($_.Exception.Message)" }
+    # curl.exe 우선(Win10 1803+ 내장·System32 절대경로) — PS5.1 Invoke-WebRequest 는 진행바
+    # 렌더링 탓에 큰 파일에서 수 배 느리다(Fable S2-7). curl 은 빠르고 진행률도 보인다. 실패 시 IWR 폴백.
+    $curlExe = Join-Path $sysDir 'curl.exe'
+    $downloaded = $false
+    if (Test-Path $curlExe) {
+      & $curlExe -fL --retry 2 -o $gz $ImageUrl
+      if ($LASTEXITCODE -eq 0) { $downloaded = $true }
+      else {
+        Warn "curl 다운로드 실패(코드 $LASTEXITCODE) — PowerShell 방식으로 다시 시도합니다."
+        if (Test-Path $gz) { Remove-Item $gz -Force -ErrorAction SilentlyContinue }
+      }
+    }
+    if (-not $downloaded) {
+      try { Invoke-WebRequest -Uri $ImageUrl -OutFile $gz -UseBasicParsing }
+      catch { Die "다운로드 실패: $($_.Exception.Message)" }
+    }
   }
 
   # 7) SHA-256 검증(import 전에 — 핵심 게이트)
@@ -200,13 +365,13 @@ try {
 
   # 9) wsl --import (별도 배포판). 최신 WSL 은 gzip tar 직접 import; 실패 시 .tar 폴백.
   Info "WSL 배포판 import: $DistroName → $InstallPath"
-  & wsl.exe --import $DistroName $InstallPath $gz --version 2
+  & $WslExe --import $DistroName $InstallPath $gz --version 2
   if ($LASTEXITCODE -ne 0) {
     Warn "gzip tar 직접 import 실패(구 WSL 가능) — .tar 로 풀어 재시도합니다."
     $tar = Join-Path $work 'cockpit-wsl.tar'
     Expand-GzipToTar $gz $tar
-    & wsl.exe --import $DistroName $InstallPath $tar --version 2
-    if ($LASTEXITCODE -ne 0) { Die "wsl --import 실패(코드 $LASTEXITCODE). wsl --update 후 재시도하세요." }
+    & $WslExe --import $DistroName $InstallPath $tar --version 2
+    if ($LASTEXITCODE -ne 0) { Die "wsl --import 실패(코드 $LASTEXITCODE). 방금 WSL 을 준비한 PC 라면 재부팅 후 이 파일을 다시 실행하세요. 그 외엔 wsl --update 후 재시도." }
   }
 }
 finally {
@@ -464,7 +629,7 @@ function Invoke-OnboardKeyInject {
   # 키 변수 결합 금지 — publish-gate §1f 가 정적 차단). 출력·예외에 키 원문 미기록.
   param([string]$DistroName, [string]$Key)
   $psi = New-Object System.Diagnostics.ProcessStartInfo
-  $psi.FileName = 'wsl.exe'
+  $psi.FileName = $WslExe   # 신뢰 경로 고정(Codex P0) — 키 브리지는 특히 bare 이름 금지
   $psi.UseShellExecute = $false
   $psi.RedirectStandardInput = $true
   $psi.Arguments = '-d ' + $DistroName + ' -- /usr/local/bin/cockpit-onboard setup set-extraction-key'
@@ -500,7 +665,7 @@ function Invoke-OnboardApply {
   }
   $dash = if ($DashboardStatus) { $DashboardStatus } else { 'failed' }
   $egress = 'off'; if ($Choice.Egress) { $egress = 'on' }
-  & wsl.exe -d $DistroName -- /usr/local/bin/cockpit-onboard setup apply-installer-onboarding --governance-ack --memory-egress $egress --key-registered $keyReg --dashboard $dash --source installer
+  & $WslExe -d $DistroName -- /usr/local/bin/cockpit-onboard setup apply-installer-onboarding --governance-ack --memory-egress $egress --key-registered $keyReg --dashboard $dash --source installer
   # rc 구분(setup.py 계약): 2=state 기록 실패(파일 없음→마법사 전체 질문) / 1=state 성공·egress
   # 마커만 실패(마법사가 불일치 감지→해당 단계 재안내). 뭉뚱그리면 안내가 부정확(Codex 4f).
   if ($LASTEXITCODE -eq 1) {
@@ -521,9 +686,8 @@ function Get-BackupScan {
   # 반환: @{ Count; Date; Dir; WinPath; OtherUser } | $null.
   # ⚠ hashtable 값 접근은 반드시 bracket(['키']) — dot .Count 는 키가 아니라 항목수를 돌려줌(발견2).
   param([string]$DistroName)
-  $out = $null
-  try { $out = & wsl.exe -d $DistroName -- /usr/local/bin/cockpit-onboard backup --scan --porcelain 2>&1 }
-  catch { return $null }
+  # Invoke-Wsl 경유 — EAP=Stop + 2>&1 은 도구가 stderr 한 줄만 내도 성공을 실패로 둔갑시킨다(Fable S2-2).
+  $out = (Invoke-Wsl @('-d', $DistroName, '--', '/usr/local/bin/cockpit-onboard', 'backup', '--scan', '--porcelain')).out
   if (-not $out) { return $null }
   $rows = @()
   foreach ($line in @($out)) {
@@ -563,11 +727,8 @@ function Invoke-OnboardRestore {
   #   (§5.5 #12 '복원 직후 키 소실' 케이스 회피). backup.py 의 #8 carry-forward 는 상태 2파일을 지킨다.
   param([string]$DistroName, [string]$Dir)
   Info "이전 백업에서 기억 복원 중($Dir)…"
-  $rc = -1
-  try {
-    & wsl.exe -d $DistroName -- /usr/local/bin/cockpit-onboard backup --restore --apply --dir $Dir 2>&1 | Out-Null
-    $rc = $LASTEXITCODE
-  } catch { $rc = -1 }
+  # Invoke-Wsl 경유 — stderr 한 줄에 성공이 실패로 둔갑하는 EAP=Stop 지뢰 회피(Fable S2-2).
+  $rc = (Invoke-Wsl @('-d', $DistroName, '--', '/usr/local/bin/cockpit-onboard', 'backup', '--restore', '--apply', '--dir', $Dir)).code
   if ($rc -eq 0) {
     Info '기억 복원 완료 — 복원된 내용은 다음 세션부터 반영됩니다(점검: /cockpit-setup 또는 doctor).'
   } else {
@@ -585,7 +746,7 @@ function Invoke-OnboardClaudeIdentity {
   param([string]$DistroName, [string]$Role)
   if (-not $Role) { return }
   $idArgs = @('-d', $DistroName, '--', '/usr/local/bin/cockpit-onboard', 'setup', 'set-claude-identity', '--role', $Role)
-  & wsl.exe @idArgs
+  & $WslExe @idArgs
   if ($LASTEXITCODE -ne 0) {
     Warn "CLAUDE.md 개인화 반영 실패(코드 $LASTEXITCODE) — 설치는 정상. 첫 실행 /cockpit-setup 에서 채우세요."
   } else {
@@ -613,15 +774,11 @@ function Invoke-DashboardInstall {
   param([string]$DistroName, [string]$OnboardingBlocked)
 
   Info '세션 대시보드 설치(필수 부속·네트워크 필요·설치≠기동)…'
-  $out = $null
-  $rc = -1   # 기본=실패. wsl.exe 가 던지면(미발견 등) stale $LASTEXITCODE(0) 오판 방지.
-  try {
-    $out = & wsl.exe -d $DistroName -- /usr/local/bin/cockpit-onboard install-dashboard 2>&1
-    $rc = $LASTEXITCODE
-  } catch {
-    $out = $_.Exception.Message
-    $rc = -1
-  }
+  # Invoke-Wsl 경유 — stderr 진행 메시지가 성공을 실패로 둔갑시키는 EAP=Stop 지뢰 회피(Fable S2-2).
+  # Invoke-Wsl 은 던지지 않고 실패를 code=-1 로 돌려주므로 stale $LASTEXITCODE 오판도 함께 해소.
+  $r = Invoke-Wsl @('-d', $DistroName, '--', '/usr/local/bin/cockpit-onboard', 'install-dashboard')
+  $out = $r.out
+  $rc = $r.code
   if ($rc -eq 0) {
     Info "세션 대시보드 설치됨(설치≠기동 — 켜기는 바탕화면 'Cockpit Dashboard' 아이콘)."
     return @{ Status = 'installed'; Class = $null; Code = 0 }
@@ -712,9 +869,11 @@ function New-CockpitLauncher {
     '@echo off',
     'title Claude (cockpit)',
     'setlocal',
-    'set "WSL=wsl.exe"',
-    'where %WSL% >nul 2>nul || set "WSL=%WINDIR%\Sysnative\wsl.exe"',
-    ('%WSL% -d ' + $Distro + ' bash -lc "' + $launch + '"'),
+    # 신뢰 경로 고정(Fable S1-2) — 런처 CWD=%LOCALAPPDATA%\Cockpit 는 사용자 쓰기 가능이라
+    # bare 이름은 같은 폴더의 가짜 wsl.exe 에 진다. Dashboard.cmd 와 동일 패턴.
+    'set "WSL=%WINDIR%\System32\wsl.exe"',
+    'if not exist "%WSL%" set "WSL=%WINDIR%\Sysnative\wsl.exe"',
+    ('"%WSL%" -d ' + $Distro + ' bash -lc "' + $launch + '"'),
     'if %errorlevel% neq 0 (',
     '  echo(',
     '  echo [cockpit] Launch failed - check WSL/distro state:  wsl -l -v',
@@ -849,10 +1008,18 @@ Write-Host ""
 Write-Host "통째 삭제(되돌리기):  wsl --unregister $DistroName   # 다른 배포판은 안 건드림" -ForegroundColor Cyan
 Write-Host ""
 
+# 설치 자체는 성공 — 이후 claude 대화 화면(TUI)이 기록에 섞이지 않게 여기서 트랜스크립트 종료.
+try { Stop-Transcript | Out-Null } catch {}
+
 if (-not $SkipLaunch) {
   # #3 — 설치 직후에도 더블클릭 런처(Launch-Cockpit.cmd)와 동일 경로로 진입 = claude 자동실행 +
   #   최초 로그인 안내 + 로그인 후 원샷 재시작(원격조종 활성). 날것 WSL 셸로 떨구지 않는다(저리터러시
   #   막다른 길 제거). launch.sh 부재(비-preconfigure/staged 이미지) 시 claude 직접 실행으로 폴백.
   Info "claude 를 실행합니다 — 최초 1회 로그인 안내는 화면을 따라오세요(나가려면 claude 에서 /exit 또는 Ctrl-D)."
-  & wsl.exe -d $DistroName -- bash -lc 'if [ -x "$HOME/.cockpit/launch.sh" ]; then "$HOME/.cockpit/launch.sh"; else claude; fi'
+  & $WslExe -d $DistroName -- bash -lc 'if [ -x "$HOME/.cockpit/launch.sh" ]; then "$HOME/.cockpit/launch.sh"; else claude; fi'
+  if ($LASTEXITCODE -ne 0) {
+    # 설치는 이미 성공 — 첫 실행만 실패한 상태. 창이 그대로 닫히면 사용자가 실패를 못 보므로 멈춰서 안내(Codex 5).
+    Warn "설치는 완료됐지만 첫 실행이 실패했습니다(코드 $LASTEXITCODE). 바탕화면의 'Claude (cockpit)' 아이콘으로 다시 실행해 보시고, 안 되면 이 화면을 사진 찍어 배포자에게 보내주세요."
+    Read-Host "위 안내를 확인했으면 Enter 를 누르세요(창이 닫힙니다)" | Out-Null
+  }
 }
